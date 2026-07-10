@@ -1,0 +1,209 @@
+#!/bin/bash
+#
+# claude-usage.sh — ดึงข้อมูลการใช้งาน Claude (session / weekly / per-model)
+#                   ผ่าน OAuth token ของ Claude Code (endpoint เดียวกับคำสั่ง /usage)
+#
+#   ใช้งาน:
+#     bash claude-usage.sh          # แสดงผลแบบอ่านง่ายใน terminal (ดีบั๊ก)
+#     bash claude-usage.sh --json   # พ่น JSON (สำหรับให้ widget ใช้ต่อ)
+#
+# ไม่ต้องใส่ sessionKey — อ่าน token ที่ Claude Code เก็บไว้ (และต่ออายุให้เอง)
+# ยิงที่ api.anthropic.com/api/oauth/usage → ไม่ติด Cloudflare (ต่างจาก claude.ai)
+#
+# โหมด --json จะ:
+#   • สำเร็จ  → บันทึก cache ล่าสุดไว้ที่ ~/.claude/usage-cache.json แล้วพ่น JSON (_status:"live")
+#   • ล้มเหลว → พ่น cache ก้อนล่าสุด (ถ้ามี) พร้อม _status:"stale" + _error
+#              (เผื่อ token หมดอายุ/อ่าน keychain ไม่ได้ → widget ยังโชว์ค่าเดิมได้)
+
+set -u
+MODE="${1:-pretty}"
+# กัน HOME ไม่ถูกตั้ง (บาง launch context ของ GUI มี env น้อย) — bash `~` ดึงจาก passwd ได้แม้ HOME ว่าง
+export HOME="${HOME:-$(cd ~ && pwd)}"
+CACHE="$HOME/.claude/usage-cache.json"
+
+# ── โปรแกรม python เก็บเป็นตัวแปร แล้วรันผ่าน `python3 -c` ─────────
+# (ห้ามใช้ heredoc `python3 - <<EOF` คู่กับการ pipe ข้อมูลเข้า stdin
+#  เพราะ heredoc จะยึด stdin ไปเป็น "โปรแกรม" ทำให้ข้อมูลที่ pipe หายไป)
+
+PY_EXTRACT='import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+o = d.get("claudeAiOauth", d) if isinstance(d, dict) else {}
+t = o.get("accessToken", "")
+if t:
+    print(t)'
+
+# แปลง credential blob → ป้าย plan (เช่น "Max (20×)") ให้ widget โชว์ถูกต้องต่อคน
+PY_PLAN='import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+o = d.get("claudeAiOauth", d) if isinstance(d, dict) else {}
+tier = (o.get("rateLimitTier") or "").lower()
+sub = (o.get("subscriptionType") or "").lower()
+m = {"default_claude_max_20x": "Max (20×)", "default_claude_max_5x": "Max (5×)"}
+label = m.get(tier)
+if not label:
+    if "pro" in tier or sub == "pro": label = "Pro"
+    elif "max" in tier or sub == "max": label = "Max"
+    elif sub: label = sub.capitalize()
+    else: label = "Claude"
+print(label)'
+
+# ── 1) หา OAuth access token ของ Claude Code ────────────────────
+USER_NAME="${USER:-$(id -un)}"
+TOKEN=""
+CRED_BLOB=""
+
+# 1a) ไฟล์ ~/.claude/.credentials.json (บาง setup เก็บที่นี่)
+CRED_FILE="$HOME/.claude/.credentials.json"
+if [ -z "$TOKEN" ] && [ -f "$CRED_FILE" ]; then
+  CRED_BLOB=$(cat "$CRED_FILE" 2>/dev/null)
+  TOKEN=$(printf '%s' "$CRED_BLOB" | python3 -c "$PY_EXTRACT" 2>/dev/null)
+fi
+
+# 1b) macOS Keychain — service "Claude Code-credentials", account = ชื่อผู้ใช้
+#     (ยืนยันแล้วบนเครื่องนี้: /usr/bin/security อ่านได้โดยไม่มี prompt แม้จาก GUI context)
+if [ -z "$TOKEN" ] && command -v security >/dev/null 2>&1; then
+  for SVC in "Claude Code-credentials" "Claude Code"; do
+    BLOB=$(security find-generic-password -a "$USER_NAME" -w -s "$SVC" 2>/dev/null) \
+      || BLOB=$(security find-generic-password -w -s "$SVC" 2>/dev/null)
+    if [ -n "${BLOB:-}" ]; then
+      TOKEN=$(printf '%s' "$BLOB" | python3 -c "$PY_EXTRACT" 2>/dev/null)
+      [ -n "$TOKEN" ] && { CRED_BLOB="$BLOB"; break; }
+    fi
+  done
+fi
+
+# ป้าย plan (จาก credential blob) — ใช้กับ widget
+PLAN="Max"
+if [ -n "$CRED_BLOB" ]; then
+  P=$(printf '%s' "$CRED_BLOB" | python3 -c "$PY_PLAN" 2>/dev/null)
+  [ -n "$P" ] && PLAN="$P"
+fi
+
+# ── helper: พ่น cache เดิม (stale) หรือ error ให้ --json ─────────
+emit_stale() {  # $1 = เหตุผล error
+  if [ -f "$CACHE" ]; then
+    CACHE="$CACHE" REASON="$1" python3 -c '
+import os, json
+try:
+    d = json.load(open(os.environ["CACHE"]))
+except Exception:
+    d = {}
+d["_status"] = "stale"
+d["_error"] = os.environ["REASON"]
+print(json.dumps(d))'
+  else
+    printf '{"_status":"error","_error":"%s"}\n' "$1"
+  fi
+}
+
+if [ -z "$TOKEN" ]; then
+  if [ "$MODE" = "--json" ]; then
+    emit_stale "no_token"
+  else
+    echo "❌ หา OAuth token ของ Claude Code ไม่เจอ"
+    echo "   เปิด Claude Code (พิมพ์ claude) สักครั้งเพื่อให้แน่ใจว่าล็อกอินอยู่ แล้วรันใหม่"
+  fi
+  exit 0
+fi
+
+# ── 2) เรียก endpoint usage ─────────────────────────────────────
+RESP=$(curl -s -m 15 https://api.anthropic.com/api/oauth/usage \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json")
+
+# ตรวจว่าใช้ได้ไหม (สำเร็จต้องมี utilization)
+if ! printf '%s' "$RESP" | grep -q 'utilization'; then
+  if [ "$MODE" = "--json" ]; then
+    emit_stale "auth"   # token หมดอายุ/ถูกปฏิเสธ → โชว์ค่าเดิม
+  else
+    echo "❌ token หมดอายุหรือถูกปฏิเสธ — เปิด Claude Code (claude) สักครั้งเพื่อรีเฟรช token"
+  fi
+  exit 0
+fi
+
+# ── 3) โหมด JSON: ฝัง _status/_fetched_at, บันทึก cache, แล้วพ่น ──
+if [ "$MODE" = "--json" ]; then
+  OUT=$(printf '%s' "$RESP" | PLAN="$PLAN" python3 -c '
+import sys, os, json, datetime
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("{\"_status\":\"error\",\"_error\":\"bad_json\"}"); sys.exit(0)
+d["_status"] = "live"
+d["_plan"] = os.environ.get("PLAN") or "Claude"
+d["_fetched_at"] = datetime.datetime.now().astimezone().isoformat()
+print(json.dumps(d))')
+  # เขียน cache แบบ atomic (เผื่อคราวหน้าดึงไม่ได้ จะได้มีของเดิมโชว์)
+  mkdir -p "$HOME/.claude" 2>/dev/null
+  if printf '%s' "$OUT" > "$CACHE.tmp" 2>/dev/null; then
+    mv "$CACHE.tmp" "$CACHE" 2>/dev/null
+  fi
+  printf '%s\n' "$OUT"
+  exit 0
+fi
+
+# ── 4) โหมดอ่านง่าย: เรนเดอร์จาก limits[] (มี label + per-model) ──
+printf '%s' "$RESP" | PLAN="$PLAN" python3 -c '
+import sys, os, json, datetime
+
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("  ❌ อ่าน response ไม่ได้"); sys.exit(0)
+
+def bar(pct, width=24):
+    pct = max(0, min(100, int(round(pct))))
+    filled = pct * width // 100
+    return "[" + "#" * filled + "·" * (width - filled) + "] %d%%" % pct
+
+def parse_iso(s):
+    if not s:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(s).astimezone()
+    except Exception:
+        return None
+
+def rel(dt):
+    if not dt:
+        return ""
+    diff = max(0, (dt - datetime.datetime.now().astimezone()).total_seconds())
+    return "รีเซ็ตใน %dh %dm" % (diff // 3600, (diff % 3600) // 60)
+
+def when(dt):
+    return dt.strftime("รีเซ็ต %a %d/%m %H:%M") if dt else ""
+
+rows = []
+limits = d.get("limits") or []
+if limits:
+    for lim in limits:
+        kind = lim.get("kind"); pct = lim.get("percent", 0) or 0
+        rst = parse_iso(lim.get("resets_at"))
+        if kind == "session":
+            rows.append(("Current session", pct, rel(rst)))
+        elif kind == "weekly_all":
+            rows.append(("Current week", pct, when(rst)))
+        elif kind == "weekly_scoped":
+            name = (((lim.get("scope") or {}).get("model") or {}).get("display_name")) or "scoped"
+            rows.append(("Weekly · " + name, pct, when(rst)))
+else:
+    fh = d.get("five_hour") or {}; sd = d.get("seven_day") or {}
+    rows.append(("Current session", fh.get("utilization", 0), rel(parse_iso(fh.get("resets_at")))))
+    rows.append(("Current week", sd.get("utilization", 0), when(parse_iso(sd.get("resets_at")))))
+
+print("")
+print("  ✳  Claude Usage  ·  " + (os.environ.get("PLAN") or "Claude"))
+print("  " + "─" * 44)
+for label, pct, sub in rows:
+    print("  %-16s %s" % (label, bar(pct)))
+    if sub:
+        print("  %-16s %s" % ("", sub))
+print("  " + "─" * 44)
+print("  อัปเดต " + datetime.datetime.now().strftime("%H:%M น. %d/%m/%Y"))
+print("")'

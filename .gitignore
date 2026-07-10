@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# ไฟล์ชั่วคราว
+*.tmp
+*.log
+
+# cache การใช้งาน (มี timestamp เฉพาะเครื่อง — ไม่ควร commit; ปกติอยู่ที่ ~/.claude/ อยู่แล้ว)
+usage-cache.json
+.credentials.json
