@@ -120,7 +120,8 @@ try: d = json.load(sys.stdin)
 except Exception: print("no"); sys.exit(0)
 o = d.get("claudeAiOauth", d) if isinstance(d, dict) else {}
 exp = (o.get("expiresAt") or 0) / 1000
-print("yes" if (exp - time.time()) < 300 else "no")' 2>/dev/null)
+# buffer 900s (>รอบ poll 10 นาที) → ทุก poll จับ token ต่ออายุก่อนหมดเสมอ
+print("yes" if (exp - time.time()) < 900 else "no")' 2>/dev/null)
   if [ "$NEAR" = "yes" ]; then
     NEWBLOB=$(printf '%s' "$CRED_BLOB" | python3 -c "$PY_REFRESH" 2>/dev/null)
     if [ -n "$NEWBLOB" ]; then

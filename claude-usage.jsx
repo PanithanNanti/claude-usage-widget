@@ -16,7 +16,7 @@ export const command =
   "bash /Users/user/Developer/dev/claudelimit/claude-usage.sh --json";
 
 const CMD = command;
-export const refreshFrequency = 300000; // 5 นาที
+export const refreshFrequency = 600000; // 10 นาที (เบาต่อ rate limit; usage ไม่ต้องสดวินาทีต่อวินาที)
 
 export const className = `
   font-family: -apple-system, "SF Pro Display", "Helvetica Neue", sans-serif;
@@ -346,7 +346,7 @@ function paint(root, data) {
     if (status === "stale") {
       const info = errInfo(err);
       footColor = "#f0a728"; footText = "ค่าล่าสุด " + fmtClock(fetched) + " · " + info.short; showLogin = info.login;
-    } else { footColor = "#3fbf68"; footText = "อัปเดต " + fmtClock(fetched) + " · ทุก 5 นาที"; }
+    } else { footColor = "#3fbf68"; footText = "อัปเดต " + fmtClock(fetched) + " · ทุก 10 นาที"; }
   }
 
   // dropdown เลือกจอ
