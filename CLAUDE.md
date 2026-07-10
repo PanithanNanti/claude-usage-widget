@@ -47,8 +47,8 @@ Headers:
     และ `o=""` ถ้าใช้ config dir ปกติ (ไม่ตั้ง `CLAUDE_CONFIG_DIR`) — มิฉะนั้น `o="-<sha256(configdir)[:8]>"`
   - → ค่า default ที่คาดคือ service = **`"Claude Code"`**
 
-> ✅ **แก้แล้ว (2026-07-10):** บนเครื่องนี้ token อยู่ที่
-> **keychain service = `"Claude Code-credentials"`, account = `user` (=`$USER`)**
+> ✅ **ยืนยันบน macOS จริง:** token อยู่ที่
+> **keychain service = `"Claude Code-credentials"`, account = `$USER`**
 > โครงสร้าง blob **ห่อด้วย `{"claudeAiOauth":{...}}`** (ไม่ใช่ flat)
 > และ **`/usr/bin/security` อ่านได้โดยไม่มี GUI prompt** แม้จาก clean-env / `launchctl asuser`
 > → widget เรียกผ่าน Übersicht (GUI context) อ่าน keychain ได้ ไม่ติด ACL
@@ -72,15 +72,15 @@ seven_day_overage_included   (อาจมี)
 > ✅ **ยืนยัน JSON จริงแล้ว (2026-07-10):** oauth endpoint **ก็มี array `limits[]`** เหมือนกัน!
 > (`kind: session|weekly_all|weekly_scoped`, `percent`, `severity`, `resets_at`,
 >  `scope.model.display_name` เช่น "Fable") → script/widget เรนเดอร์จาก `limits[]` เป็นหลัก
-> (fallback ไป five_hour/seven_day ถ้าไม่มี). บัญชีนี้ `seven_day_opus/sonnet` = `null`,
-> scoped model = "Fable" (0%), มีแค่ session ที่ `is_active:true`
+> (fallback ไป five_hour/seven_day ถ้าไม่มี). บาง field เช่น `seven_day_opus/sonnet`
+> อาจเป็น `null` แล้วแต่บัญชี — โค้ดต้องกันกรณี null/ไม่มี field เสมอ
 
 ---
 
-## 🔑 ค่าเฉพาะบัญชีนี้
-- org id: `REDACTED-ORG-ID`
-- plan tier: `default_claude_max_20x` → แสดงเป็น **"Max (20×)"**
-- timezone เครื่อง: Asia/Bangkok (UTC+7) → เวลา reset ต้องแปลงเป็น local
+## 🔑 ค่าเฉพาะบัญชี (อ่านจาก credential อัตโนมัติ — ไม่ต้อง hardcode)
+- **plan tier:** อยู่ในฟิลด์ `subscriptionType`/`rateLimitTier` ของ blob → map เป็น label
+  (`default_claude_max_20x` → "Max (20×)", `default_claude_max_5x` → "Max (5×)", `default_claude_pro` → "Pro" ฯลฯ)
+- **timezone:** ใช้ของเครื่องผู้ใช้เอง → เวลา reset (ISO/UTC) แปลงเป็น local ตอนแสดงผล
 
 ---
 
@@ -125,9 +125,9 @@ seven_day_overage_included   (อาจมี)
 
 ## ดีไซน์ widget แบบ A (การ์ดเต็ม) ที่ผู้ใช้เลือก
 การ์ดมุมขวาบน desktop, พื้นเข้ม glassy:
-- หัว: ไอคอน ✳ (พื้นส้ม #d97757) + "Claude Usage" + ป้าย "Max (20×)"
+- หัว: ไอคอน ✳ (พื้นส้ม #d97757) + "Claude Usage" + ป้าย plan (เช่น "Max (20×)" — อ่านจาก credential)
 - แต่ละ limit: ชื่อ + เวลา reset + progress bar (น้ำเงิน #4f7cff; เหลือง #f0a728 เมื่อ ≥80%; แดง #f0554a เมื่อ ≥95%) + "X% used"
 - ท้าย: จุดเขียว + "อัปเดตล่าสุด HH:MM · รีเฟรชทุก 5 นาที"
-- เวลา reset: session แสดง "รีเซ็ตใน Xh Ym", weekly แสดงวัน+เวลา (local UTC+7)
+- เวลา reset: session แสดง "รีเซ็ตใน Xh Ym", weekly แสดงวัน+เวลา (timezone ของเครื่องผู้ใช้)
 
 ดูตัวอย่างเต็มใน `widget-mockups.html` (เปิดในเบราว์เซอร์)

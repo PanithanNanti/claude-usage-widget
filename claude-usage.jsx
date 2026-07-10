@@ -11,9 +11,10 @@
 
 import { run } from "uebersicht";
 
-// installer จะแก้บรรทัด command นี้ให้ชี้ path จริงในเครื่อง
+// installer จะแก้บรรทัด command นี้ให้ชี้ path จริงในเครื่องโดยอัตโนมัติ
+// (ถ้าติดตั้งเอง: เปลี่ยน /PATH/TO ให้เป็น absolute path ของ repo นี้)
 export const command =
-  "bash /Users/user/Developer/dev/claudelimit/claude-usage.sh --json";
+  "bash /PATH/TO/claude-usage.sh --json";
 
 const CMD = command;
 export const refreshFrequency = 600000; // 10 นาที (เบาต่อ rate limit; usage ไม่ต้องสดวินาทีต่อวินาที)

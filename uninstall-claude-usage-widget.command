@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # ตัวถอนการติดตั้ง Claude Usage Widget + Übersicht (คืนเครื่องสู่สภาพเดิม)
-# รันด้วย:  bash /Users/user/Developer/dev/claudelimit/uninstall-claude-usage-widget.command
+# รันด้วย:  bash uninstall-claude-usage-widget.command   (จากในโฟลเดอร์ repo)
 #
 set -u
 
