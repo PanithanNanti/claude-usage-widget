@@ -112,9 +112,17 @@ limits[]  { kind: session|weekly_all|weekly_scoped, percent, severity,
 > oauth endpoint **ก็มี `limits[]`** (ไม่ใช่แค่ฝั่ง claude.ai) — widget เรนเดอร์จากตรงนี้เป็นหลัก
 
 ### token refresh / session หลุด
-- accessToken หมดอายุทุกไม่กี่ชั่วโมง (`expiresAt`) — **Claude Code ต่ออายุให้เองตอนมันรัน**
-- ถ้า widget เจอ 401 → โชว์ค่าเดิม (stale) + ปุ่ม 🔑 เปิด Terminal รัน `claude` (ล็อกอิน/รีเฟรช token)
-- ถ้าอยากให้สดตลอดแม้ไม่เปิด claude → ทำ LaunchAgent รัน `claude-usage.sh --json` เป็นระยะ
+- accessToken หมดอายุทุก ~1 ชม. (`expiresAt`), refreshToken อายุ ~28 วัน
+- **auto-refresh (built-in):** ถ้า accessToken เหลือ <5 นาที สคริปต์จะขอ token ใหม่เองด้วย refreshToken
+  แล้วเขียนกลับ Keychain — เพราะ widget รันทุก 5 นาที จึง**เลี้ยง token ให้สดได้เองยาวๆ** โดยไม่ต้องเปิด claude
+  ```
+  POST https://platform.claude.com/v1/oauth/token
+  { "grant_type":"refresh_token", "refresh_token":"…",
+    "client_id":"9d1c250a-e61b-44d9-88ed-5944d1962f5e" }   # client_id ของ Claude Code
+  ```
+  เขียน Keychain **เฉพาะตอน refresh สำเร็จ** (ล้มเหลว → credential เดิมไม่ถูกแตะ, fallback เป็น stale)
+- ถ้า refreshToken หมดอายุจริง (นานเป็นเดือนไม่ได้ใช้) → widget โชว์ 🔑 ให้เปิด `claude` ล็อกอินใหม่
+- แยก HTTP status: `429` = rate limit (ชั่วคราว, ไม่ใช่ token หมด) · `401/403` = auth
 
 ---
 

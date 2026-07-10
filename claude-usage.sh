@@ -53,16 +53,50 @@ if not label:
     else: label = "Claude"
 print(label)'
 
+# โปรแกรม refresh: อ่าน blob เดิม → ใช้ refreshToken ขอ accessToken ใหม่ →
+# พ่น blob ที่อัปเดตแล้ว (คงฟิลด์อื่นครบ เช่น mcpOAuth) ถ้าสำเร็จ, ไม่พ่นอะไรถ้าล้มเหลว
+PY_REFRESH='import sys, json, time, urllib.request
+CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"   # client_id ของ Claude Code (จากไบนารี)
+ENDPOINT = "https://platform.claude.com/v1/oauth/token"
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+wrapped = isinstance(d, dict) and "claudeAiOauth" in d
+o = d.get("claudeAiOauth", d) if isinstance(d, dict) else {}
+rt = o.get("refreshToken")
+if not rt:
+    sys.exit(1)
+body = json.dumps({"grant_type": "refresh_token", "refresh_token": rt, "client_id": CLIENT_ID}).encode()
+req = urllib.request.Request(ENDPOINT, data=body,
+    headers={"Content-Type": "application/json", "Accept": "application/json"}, method="POST")
+try:
+    with urllib.request.urlopen(req, timeout=15) as r:
+        tok = json.load(r)
+except Exception:
+    sys.exit(1)
+at = tok.get("access_token")
+if not at:
+    sys.exit(1)
+o["accessToken"] = at
+if tok.get("refresh_token"): o["refreshToken"] = tok["refresh_token"]
+if tok.get("expires_in"): o["expiresAt"] = int((time.time() + int(tok["expires_in"])) * 1000)
+if wrapped: d["claudeAiOauth"] = o; out = d
+else: out = o
+print(json.dumps(out))'
+
 # ── 1) หา OAuth access token ของ Claude Code ────────────────────
 USER_NAME="${USER:-$(id -un)}"
 TOKEN=""
 CRED_BLOB=""
+CRED_SRC=""   # แหล่งที่มา: "file:<path>" หรือ "keychain:<service>" (ใช้ตอนเขียน token ใหม่กลับ)
 
 # 1a) ไฟล์ ~/.claude/.credentials.json (บาง setup เก็บที่นี่)
 CRED_FILE="$HOME/.claude/.credentials.json"
 if [ -z "$TOKEN" ] && [ -f "$CRED_FILE" ]; then
   CRED_BLOB=$(cat "$CRED_FILE" 2>/dev/null)
   TOKEN=$(printf '%s' "$CRED_BLOB" | python3 -c "$PY_EXTRACT" 2>/dev/null)
+  [ -n "$TOKEN" ] && CRED_SRC="file:$CRED_FILE"
 fi
 
 # 1b) macOS Keychain — service "Claude Code-credentials", account = ชื่อผู้ใช้
@@ -73,9 +107,38 @@ if [ -z "$TOKEN" ] && command -v security >/dev/null 2>&1; then
       || BLOB=$(security find-generic-password -w -s "$SVC" 2>/dev/null)
     if [ -n "${BLOB:-}" ]; then
       TOKEN=$(printf '%s' "$BLOB" | python3 -c "$PY_EXTRACT" 2>/dev/null)
-      [ -n "$TOKEN" ] && { CRED_BLOB="$BLOB"; break; }
+      [ -n "$TOKEN" ] && { CRED_BLOB="$BLOB"; CRED_SRC="keychain:$SVC"; break; }
     fi
   done
+fi
+
+# ── 1.5) auto-refresh: ถ้า accessToken ใกล้หมด (<5 นาที) ต่ออายุด้วย refreshToken ──
+if [ -n "$CRED_BLOB" ]; then
+  NEAR=$(printf '%s' "$CRED_BLOB" | python3 -c '
+import sys, json, time
+try: d = json.load(sys.stdin)
+except Exception: print("no"); sys.exit(0)
+o = d.get("claudeAiOauth", d) if isinstance(d, dict) else {}
+exp = (o.get("expiresAt") or 0) / 1000
+print("yes" if (exp - time.time()) < 300 else "no")' 2>/dev/null)
+  if [ "$NEAR" = "yes" ]; then
+    NEWBLOB=$(printf '%s' "$CRED_BLOB" | python3 -c "$PY_REFRESH" 2>/dev/null)
+    if [ -n "$NEWBLOB" ]; then
+      # เขียน blob ใหม่กลับแหล่งเดิม (เฉพาะตอน refresh สำเร็จ)
+      case "$CRED_SRC" in
+        keychain:*)
+          W_SVC="${CRED_SRC#keychain:}"
+          security add-generic-password -U -a "$USER_NAME" -s "$W_SVC" -w "$NEWBLOB" 2>/dev/null
+          ;;
+        file:*)
+          W_FILE="${CRED_SRC#file:}"
+          umask 077; printf '%s' "$NEWBLOB" > "$W_FILE.tmp" 2>/dev/null && mv "$W_FILE.tmp" "$W_FILE" 2>/dev/null
+          ;;
+      esac
+      NT=$(printf '%s' "$NEWBLOB" | python3 -c "$PY_EXTRACT" 2>/dev/null)
+      [ -n "$NT" ] && { TOKEN="$NT"; CRED_BLOB="$NEWBLOB"; }
+    fi
+  fi
 fi
 
 # ป้าย plan (จาก credential blob) — ใช้กับ widget
