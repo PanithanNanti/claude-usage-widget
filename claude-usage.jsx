@@ -147,6 +147,16 @@ function sessionPct(data) {
   const r = toRows(data).find((x) => x.name === "เซสชันปัจจุบัน");
   return r ? r.pct : null;
 }
+// แปลงรหัส error → ข้อความ + ต้องโชว์ปุ่มกุญแจไหม (rate limit/network ไม่ต้องล็อกอิน)
+function errInfo(err) {
+  switch (err) {
+    case "no_token": return { msg: "ยังไม่ได้ล็อกอิน Claude Code หรือหา token ไม่เจอ", short: "ยังไม่ได้ล็อกอิน", login: true };
+    case "auth": return { msg: "token หมดอายุ — เปิด Claude เพื่อรีเฟรช", short: "token หมดอายุ", login: true };
+    case "rate_limit": return { msg: "โดน rate limit ชั่วคราว (429) — เดี๋ยวลองใหม่เอง", short: "rate limit (429)", login: false };
+    case "network": return { msg: "ต่ออินเทอร์เน็ตไม่ได้", short: "เน็ตมีปัญหา", login: false };
+    default: return { msg: "ดึงข้อมูลไม่ได้", short: "ดึงข้อมูลไม่ได้", login: false };
+  }
+}
 
 // ════════════════ localStorage state ════════════════
 const POS_KEY = "claudeUsageWidgetPos";
@@ -327,15 +337,16 @@ function paint(root, data) {
   let bodyHTML, footColor, footText, showLogin = false;
 
   if (!data || status === "error") {
-    footColor = "#f0554a"; footText = "เชื่อมต่อไม่ได้"; showLogin = true;
-    bodyHTML = '<div class="cu-err">' +
-      (err === "no_token" ? "ยังไม่ได้ล็อกอิน Claude Code หรือหา token ไม่เจอ"
-        : "ดึงข้อมูลไม่ได้ — token อาจหมดอายุ") + "</div>";
+    const info = errInfo(err);
+    footColor = "#f0554a"; footText = info.short; showLogin = info.login;
+    bodyHTML = '<div class="cu-err">' + esc(info.msg) + "</div>";
   } else {
     bodyHTML = toRows(data).map(rowHTML).join("");
     const fetched = data._fetched_at ? new Date(data._fetched_at) : new Date();
-    if (status === "stale") { footColor = "#f0a728"; footText = "ค่าล่าสุด " + fmtClock(fetched) + " · token หมดอายุ"; showLogin = true; }
-    else { footColor = "#3fbf68"; footText = "อัปเดต " + fmtClock(fetched) + " · ทุก 5 นาที"; }
+    if (status === "stale") {
+      const info = errInfo(err);
+      footColor = "#f0a728"; footText = "ค่าล่าสุด " + fmtClock(fetched) + " · " + info.short; showLogin = info.login;
+    } else { footColor = "#3fbf68"; footText = "อัปเดต " + fmtClock(fetched) + " · ทุก 5 นาที"; }
   }
 
   // dropdown เลือกจอ

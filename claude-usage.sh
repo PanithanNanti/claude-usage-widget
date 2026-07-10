@@ -112,17 +112,36 @@ if [ -z "$TOKEN" ]; then
   exit 0
 fi
 
-# ── 2) เรียก endpoint usage ─────────────────────────────────────
-RESP=$(curl -s -m 15 https://api.anthropic.com/api/oauth/usage \
+# ── 2) เรียก endpoint usage (เก็บ HTTP status ด้วย) ─────────────
+RAW=$(curl -s -m 15 -w $'\n%{http_code}' https://api.anthropic.com/api/oauth/usage \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json")
+CODE="${RAW##*$'\n'}"     # บรรทัดสุดท้าย = http code
+RESP="${RAW%$'\n'*}"      # ที่เหลือ = body
 
-# ตรวจว่าใช้ได้ไหม (สำเร็จต้องมี utilization)
-if ! printf '%s' "$RESP" | grep -q 'utilization'; then
+# แยกประเภท error ตาม HTTP status (429 = rate limit ≠ 401 = auth)
+REASON=""
+if [ "$CODE" = "200" ] && printf '%s' "$RESP" | grep -q 'utilization'; then
+  REASON=""   # สำเร็จ
+else
+  case "$CODE" in
+    401|403) REASON="auth" ;;        # token หมดอายุ/ถูกปฏิเสธจริง
+    429)     REASON="rate_limit" ;;  # ยิงถี่ไป — ชั่วคราว ไม่ใช่ปัญหา token
+    "")      REASON="network" ;;     # ต่อเน็ตไม่ได้/timeout
+    *)       REASON="http_$CODE" ;;
+  esac
+fi
+
+if [ -n "$REASON" ]; then
   if [ "$MODE" = "--json" ]; then
-    emit_stale "auth"   # token หมดอายุ/ถูกปฏิเสธ → โชว์ค่าเดิม
+    emit_stale "$REASON"   # โชว์ค่าเดิม + บอกเหตุผลจริง
   else
-    echo "❌ token หมดอายุหรือถูกปฏิเสธ — เปิด Claude Code (claude) สักครั้งเพื่อรีเฟรช token"
+    case "$REASON" in
+      auth)       echo "❌ token หมดอายุ/ถูกปฏิเสธ — เปิด Claude Code (claude) เพื่อรีเฟรช token" ;;
+      rate_limit) echo "⏳ โดน rate limit (429) — ยิงถี่ไป รออีกสักครู่แล้วลองใหม่" ;;
+      network)    echo "📡 ต่อ API ไม่ได้ — เช็กอินเทอร์เน็ต" ;;
+      *)          echo "❌ ดึงข้อมูลไม่ได้ (HTTP ${CODE:-?})" ;;
+    esac
   fi
   exit 0
 fi
