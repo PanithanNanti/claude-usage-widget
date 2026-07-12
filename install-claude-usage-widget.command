@@ -67,6 +67,12 @@ ESC_PATH=$(printf '%s' "$SCRIPT_SH" | sed 's/[&/\]/\\&/g')
 sed "s|^  \"bash .*claude-usage.sh --json\";|  \"bash ${ESC_PATH} --json\";|" \
   "$SRC_JSX" > "$DEST_JSX"
 
+# spritesheet คาปิบาร่า (CapyBeats) — widget อ้างชื่อ claude-usage-capy.png แบบ relative
+if [ -f "$REPO_DIR/capybeats.png" ]; then
+  cp "$REPO_DIR/capybeats.png" "$WIDGETS_DIR/claude-usage-capy.png"
+  echo "  ✓ ติดตั้ง CapyBeats: $WIDGETS_DIR/claude-usage-capy.png"
+fi
+
 # ยืนยันว่าแก้ path สำเร็จ (ต้องมี path จริงอยู่ในไฟล์ปลายทาง)
 if grep -q "bash ${SCRIPT_SH} --json" "$DEST_JSX"; then
   echo "  ✓ ติดตั้ง widget: $DEST_JSX"

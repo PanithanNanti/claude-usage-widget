@@ -4,8 +4,14 @@
 #                   ผ่าน OAuth token ของ Claude Code (endpoint เดียวกับคำสั่ง /usage)
 #
 #   ใช้งาน:
-#     bash claude-usage.sh          # แสดงผลแบบอ่านง่ายใน terminal (ดีบั๊ก)
-#     bash claude-usage.sh --json   # พ่น JSON (สำหรับให้ widget ใช้ต่อ)
+#     bash claude-usage.sh                  # แสดงผลแบบอ่านง่ายใน terminal (ดีบั๊ก)
+#     bash claude-usage.sh --json           # พ่น JSON (สำหรับให้ widget ใช้ต่อ)
+#     bash claude-usage.sh --json --force   # ข้าม TTL cache (แต่ไม่ข้าม backoff หลัง 429)
+#
+# กัน 429 ที่ตัว script (ไม่ใช่ฝั่งคนเรียก):
+#   • TTL cache 5 นาที (env CU_TTL) — เรียกกี่ครั้งก็ยิง API จริงไม่เกิน 1 ครั้ง/TTL
+#   • เจอ 429 → พักยิง 15 นาที (env CU_BACKOFF, ไฟล์ ~/.claude/usage-backoff)
+#     ระหว่างพักตอบ cache เดิมเป็น stale + _error:"rate_limit"
 #
 # ไม่ต้องใส่ sessionKey — อ่าน token ที่ Claude Code เก็บไว้ (และต่ออายุให้เอง)
 # ยิงที่ api.anthropic.com/api/oauth/usage → ไม่ติด Cloudflare (ต่างจาก claude.ai)
@@ -17,9 +23,45 @@
 
 set -u
 MODE="${1:-pretty}"
+FORCE=0
+for A in "$@"; do [ "$A" = "--force" ] && FORCE=1; done
 # กัน HOME ไม่ถูกตั้ง (บาง launch context ของ GUI มี env น้อย) — bash `~` ดึงจาก passwd ได้แม้ HOME ว่าง
 export HOME="${HOME:-$(cd ~ && pwd)}"
 CACHE="$HOME/.claude/usage-cache.json"
+BACKOFF_FILE="$HOME/.claude/usage-backoff"   # เก็บ epoch ที่ห้ามยิง API ก่อนถึงเวลานั้น (หลังเจอ 429)
+TTL="${CU_TTL:-300}"            # cache สดกว่า 5 นาที → ตอบจาก cache ไม่ยิง API
+BACKOFF="${CU_BACKOFF:-900}"    # เจอ 429 → พักยิง 15 นาที
+NOW=$(date +%s)
+
+# ── 0) cap ที่ตัว script: ต่อให้ถูกเรียกถี่แค่ไหน ก็ยิง API จริงไม่เกิน 1 ครั้ง/TTL ──
+#     (กัน 429 จากกรณี Übersicht reload widgets, ตื่นจาก sleep, กดรีเฟรชรัวๆ, หลายจอ)
+if [ "$MODE" = "--json" ] && [ "$FORCE" = "0" ] && [ -f "$CACHE" ]; then
+  AGE=$(( NOW - $(stat -f %m "$CACHE" 2>/dev/null || echo 0) ))
+  if [ "$AGE" -ge 0 ] && [ "$AGE" -lt "$TTL" ]; then
+    cat "$CACHE"; echo ""
+    exit 0
+  fi
+fi
+# ── 0.5) อยู่ในช่วง backoff หลัง 429 → ไม่ยิง API เลย ตอบ cache เดิม (stale) ──
+#     (--force ก็ไม่ข้ามอันนี้ — 429 คือ server บอกให้พัก การยิงซ้ำมีแต่ยืดเวลาโดนแบน)
+if [ "$MODE" = "--json" ] && [ -f "$BACKOFF_FILE" ]; then
+  UNTIL=$(cat "$BACKOFF_FILE" 2>/dev/null || echo 0)
+  case "$UNTIL" in (*[!0-9]*|"") UNTIL=0;; esac
+  if [ "$NOW" -lt "$UNTIL" ]; then
+    # helper emit_stale ประกาศทีหลัง — inline ตรงนี้แบบสั้นๆ
+    if [ -f "$CACHE" ]; then
+      CACHE="$CACHE" python3 -c '
+import os, json
+try: d = json.load(open(os.environ["CACHE"]))
+except Exception: d = {}
+d["_status"] = "stale"; d["_error"] = "rate_limit"
+print(json.dumps(d))'
+    else
+      printf '{"_status":"error","_error":"rate_limit"}\n'
+    fi
+    exit 0
+  fi
+fi
 
 # ── โปรแกรม python เก็บเป็นตัวแปร แล้วรันผ่าน `python3 -c` ─────────
 # (ห้ามใช้ heredoc `python3 - <<EOF` คู่กับการ pipe ข้อมูลเข้า stdin
@@ -187,10 +229,12 @@ RESP="${RAW%$'\n'*}"      # ที่เหลือ = body
 REASON=""
 if [ "$CODE" = "200" ] && printf '%s' "$RESP" | grep -q 'utilization'; then
   REASON=""   # สำเร็จ
+  rm -f "$BACKOFF_FILE" 2>/dev/null
 else
   case "$CODE" in
     401|403) REASON="auth" ;;        # token หมดอายุ/ถูกปฏิเสธจริง
-    429)     REASON="rate_limit" ;;  # ยิงถี่ไป — ชั่วคราว ไม่ใช่ปัญหา token
+    429)     REASON="rate_limit"     # ยิงถี่ไป — พักยิง $BACKOFF วิ ก่อนลองใหม่
+             echo $(( NOW + BACKOFF )) > "$BACKOFF_FILE" 2>/dev/null ;;
     "")      REASON="network" ;;     # ต่อเน็ตไม่ได้/timeout
     *)       REASON="http_$CODE" ;;
   esac

@@ -153,7 +153,7 @@ function errInfo(err) {
   switch (err) {
     case "no_token": return { msg: "ยังไม่ได้ล็อกอิน Claude Code หรือหา token ไม่เจอ", short: "ยังไม่ได้ล็อกอิน", login: true };
     case "auth": return { msg: "token หมดอายุ — เปิด Claude เพื่อรีเฟรช", short: "token หมดอายุ", login: true };
-    case "rate_limit": return { msg: "โดน rate limit ชั่วคราว (429) — เดี๋ยวลองใหม่เอง", short: "rate limit (429)", login: false };
+    case "rate_limit": return { msg: "โดน rate limit (429) — พักยิง ~15 นาทีแล้วลองใหม่เอง", short: "พัก 429 · รอรอบใหม่", login: false };
     case "network": return { msg: "ต่ออินเทอร์เน็ตไม่ได้", short: "เน็ตมีปัญหา", login: false };
     default: return { msg: "ดึงข้อมูลไม่ได้", short: "ดึงข้อมูลไม่ได้", login: false };
   }
@@ -220,12 +220,14 @@ function ensureOnScreen(el) {
   if (!el || el.style.display === "none") return;
   const rect = el.getBoundingClientRect();
   if (!rect.width) return;
+  // การ์ดที่มีคาปิบาร่าเกาะหัว ต้องเผื่อที่ด้านบนให้น้องโผล่พ้นจอด้วย
+  const minTop = el.querySelector(".cu-capy") ? 8 + (typeof CAPY_OVERHANG !== "undefined" ? CAPY_OVERHANG : 96) : 8;
   const maxLeft = window.innerWidth - rect.width - 8, maxTop = window.innerHeight - rect.height - 8;
   let left = rect.left, top = rect.top, changed = false;
   if (left > maxLeft) { left = Math.max(8, maxLeft); changed = true; }
-  if (top > maxTop) { top = Math.max(8, maxTop); changed = true; }
+  if (top > maxTop) { top = Math.max(minTop, maxTop); changed = true; }
   if (left < 8) { left = 8; changed = true; }
-  if (top < 8) { top = 8; changed = true; }
+  if (top < minTop) { top = minTop; changed = true; }
   if (changed) { el.style.left = left + "px"; el.style.top = top + "px"; el.style.right = "auto"; }
 }
 // เรียกท้าย paint + ในลูป sync
@@ -249,6 +251,9 @@ function doRun(cmd) {
     try {
       const ret = run(cmd, (err, out) => {
         if (out !== undefined) return err ? fin(reject, err) : fin(resolve, out);
+        // out ไม่มี: บาง run() เรียก callback(output) อาร์กเดียว — แต่ถ้าเป็น Error ต้อง reject
+        // (เดิม resolve(Error) → JSON.parse(Error) พัง → การ์ดกลายเป็น "ดึงข้อมูลไม่ได้")
+        if (err instanceof Error) return fin(reject, err);
         fin(resolve, err);
       });
       if (ret && typeof ret.then === "function") ret.then((o) => fin(resolve, o), (e) => fin(reject, e));
@@ -263,9 +268,18 @@ function refreshNow(e) {
   if (e) e.stopPropagation();
   const btn = document.querySelector(".cu-refresh");
   if (btn) { btn.textContent = "⟳ กำลังรีเฟรช"; btn.classList.add("spin"); }
-  doRun(CMD)
-    .then((out) => { let d = null; try { d = JSON.parse(out); } catch (_) {} repaintCurrent(d); })
-    .catch(() => { if (btn) { btn.textContent = "↻ รีเฟรช"; btn.classList.remove("spin"); } });
+  const restore = () => {
+    const b = document.querySelector(".cu-refresh");
+    if (b) { b.textContent = "↻ รีเฟรช"; b.classList.remove("spin"); }
+  };
+  doRun(CMD + " --force") // ข้าม TTL cache ของ script (แต่ script ยังกัน backoff หลัง 429 ให้)
+    .then((out) => {
+      let d = null; try { d = JSON.parse(out); } catch (_) {}
+      // วาดทับเฉพาะตอนได้ JSON จริง — ผลเพี้ยน/ว่าง (เช่น server สะดุด) ให้คงค่าเดิมไว้
+      if (d && d._status) repaintCurrent(d);
+      else restore();
+    })
+    .catch(restore);
 }
 function openLogin(e) {
   if (e) e.stopPropagation();
@@ -305,6 +319,24 @@ function startDrag(e) {
   document.addEventListener("mousemove", move);
   document.addEventListener("mouseup", up);
 }
+
+// ════════════════ CapyBeats — คาปิบาร่าดุ๊กดิ๊กบนหัวการ์ด ════════════════
+// spritesheet 8 คอลัมน์ × 9 แถว = 72 เฟรม (เฟรมต้นฉบับ 192×208, ย่อ/ขยายด้วย CAPY_SCALE)
+// ไฟล์ claude-usage-capy.png อยู่ในโฟลเดอร์ widgets (Übersicht serve ให้เอง)
+// ใช้ <style> ตรงๆ (ไม่ฝังใน className) เพราะ @keyframes ต้องอยู่ top-level
+const CAPY_SCALE = 0.75; // ปรับขนาดน้องตรงนี้ (0.5 = เล็ก, 0.75 = ใหญ่, 1 = เท่าต้นฉบับ)
+const CAPY_W = Math.round(192 * CAPY_SCALE), CAPY_H = Math.round(208 * CAPY_SCALE);
+const CAPY_SHEET_W = CAPY_W * 8, CAPY_SHEET_H = CAPY_H * 9;
+const CAPY_OVERHANG = CAPY_H - 10; // โผล่พ้นหัวการ์ด (จมลงในการ์ด 10px เหมือนนั่งบนขอบ)
+const CAPY_CSS =
+  '<style>' +
+  '.cu-capy{position:absolute;top:-' + CAPY_OVERHANG + 'px;left:14px;width:' + CAPY_W + 'px;height:' + CAPY_H + 'px;' +
+    'background:url("claude-usage-capy.png") no-repeat 0 0;background-size:' + CAPY_SHEET_W + 'px ' + CAPY_SHEET_H + 'px;' +
+    'image-rendering:pixelated;pointer-events:none;' +
+    'animation:cuCapX 0.8s steps(8) infinite, cuCapY 7.2s steps(9) infinite;}' +
+  '@keyframes cuCapX{from{background-position-x:0}to{background-position-x:-' + CAPY_SHEET_W + 'px}}' +
+  '@keyframes cuCapY{from{background-position-y:0}to{background-position-y:-' + CAPY_SHEET_H + 'px}}' +
+  '</style>';
 
 // ════════════════ painter (แหล่งวาดเดียว) ════════════════
 function rowHTML(r) {
@@ -360,6 +392,7 @@ function paint(root, data) {
 
   root.innerHTML =
     '<div class="cu-card"' + posAttr() + '>' +
+      CAPY_CSS + '<div class="cu-capy" title="CapyBeats"></div>' +
       '<div class="cu-head">' +
         '<div class="cu-logo">✳</div><div class="cu-title">Claude Usage</div>' +
         '<div class="cu-badge">' + esc((data && data._plan) || "Max (20×)") + '</div>' +
@@ -407,5 +440,8 @@ if (typeof document !== "undefined" && !window.__cuDocClose) {
 export const render = ({ output }) => {
   let data = null;
   try { data = JSON.parse(output); } catch (e) { data = null; }
+  // จำค่าดีล่าสุดไว้ — รอบไหน output เพี้ยน (server สะดุด/stderr ปน) โชว์ค่าเดิมเป็น stale แทน error
+  if (data && data._status) window.__cuLastGood = data;
+  else if (window.__cuLastGood) data = Object.assign({}, window.__cuLastGood, { _status: "stale", _error: "widget" });
   return <div className="cu-root" ref={(el) => { if (el) paint(el, data); }} />;
 };

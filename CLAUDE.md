@@ -88,8 +88,9 @@ seven_day_overage_included   (อาจมี)
 | ไฟล์ | สถานะ |
 |------|-------|
 | `CLAUDE.md` | ← ไฟล์นี้ |
-| `claude-usage.sh` | ✅ ใช้ได้จริง — ดึง usage ผ่าน OAuth token (pretty + `--json`), แกะ token ด้วย python3, มี cache/stale fallback ที่ `~/.claude/usage-cache.json` |
-| `claude-usage.jsx` | ✅ widget Übersicht **แบบ A (การ์ดเต็ม)** เขียนใหม่ทั้งไฟล์ — เรียก `claude-usage.sh --json`, เรนเดอร์จาก `limits[]`, รีเฟรช 5 นาที, มีสถานะ stale/error |
+| `claude-usage.sh` | ✅ ใช้ได้จริง — ดึง usage ผ่าน OAuth token (pretty + `--json` + `--force`), แกะ token ด้วย python3, มี cache/stale fallback ที่ `~/.claude/usage-cache.json` **+ กัน 429 ในตัว**: TTL cache 5 นาที (`CU_TTL`) → เรียกถี่แค่ไหนก็ยิง API ไม่เกิน 1 ครั้ง/TTL, เจอ 429 → พักยิง 15 นาที (`CU_BACKOFF`, state ที่ `~/.claude/usage-backoff`, `--force` ก็ไม่ข้าม) |
+| `claude-usage.jsx` | ✅ widget Übersicht **แบบ A (การ์ดเต็ม)** — เรียก `claude-usage.sh --json`, เรนเดอร์จาก `limits[]`, รีเฟรช 10 นาที, สถานะ stale/error, ปุ่ม ↻ ใช้ `--force` และ**ไม่มีทางวาดทับข้อมูลดีด้วย error** (ผลเพี้ยน→คงค่าเดิม; `run()` ที่คืน Error ถูก reject ไม่ใช่ resolve), มี **CapyBeats** คาปิบาร่า sprite 72 เฟรม (8×9, CSS steps) ดุ๊กดิ๊กบนหัวการ์ด |
+| `capybeats.png` | spritesheet คาปิบาร่า (จาก `~/.codex/pets/capybeats`) — installer copy ไป widgets เป็น `claude-usage-capy.png` (widget อ้าง relative URL ผ่าน server ของ Übersicht) |
 | `install-claude-usage-widget.command` | ✅ installer ใหม่ — เช็ก/ติดตั้ง Übersicht, copy jsx + แก้ path สคริปต์ให้อัตโนมัติ, วอร์ม cache, รีเฟรช |
 | `uninstall-claude-usage-widget.command` | ตัวถอน widget/Übersicht + ลบ config เก่า |
 | `~/Library/Application Support/Übersicht/widgets/claude-usage.jsx` | ✅ **ติดตั้งลงแล้ว** (path สคริปต์ถูกแก้เป็น absolute แล้ว) |
