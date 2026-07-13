@@ -47,6 +47,20 @@ Headers:
     และ `o=""` ถ้าใช้ config dir ปกติ (ไม่ตั้ง `CLAUDE_CONFIG_DIR`) — มิฉะนั้น `o="-<sha256(configdir)[:8]>"`
   - → ค่า default ที่คาดคือ service = **`"Claude Code"`**
 
+### 4) endpoint ต่ออายุ token (`platform.claude.com/v1/oauth/token`) บล็อกตาม User-Agent
+บทเรียนจริง 2026-07-13 (อาการ: widget ค้าง 429 ตั้งแต่ ~ตี 5 ทุกวัน):
+- accessToken อายุ **8 ชม.** — ใช้ Claude Code ถึงดึก token ตายราวๆ ตี 5 เป๊ะทุกวัน
+- auto-refresh ใน script **ไม่เคยทำงานเลย** เพราะ Cloudflare หน้า endpoint นี้บล็อกเป็น
+  **denylist ตาม UA**: `Python-urllib` → **403** (code 1010), curl default/browser UA → **429**
+  แต่ UA ชื่อธรรมดาอย่าง `claude-usage-widget/1.0` หรือ `axios/1.7.0` → **ผ่าน** (ได้ 400
+  invalid_grant กับ token ทดสอบ = ถึงตัว API จริง) → แค่ตั้ง UA เองก็พอ **ไม่ต้องปลอมเป็น claude-code**
+- 429 ที่เห็นบน widget ไม่ได้มาจาก refresh — มาจากการเอา **token เน่ายิง usage ซ้ำทุก 10 นาที
+  ข้ามคืน** จนสะสม 401 แล้ว edge ของ `api.anthropic.com` ตบ 429 ใส่ → ต้องหยุดยิงทันที
+  ที่รู้ว่า token ตายและต่อไม่ได้ (script กันให้แล้ว)
+- กัน refresh token ชนกับ Claude Code ที่รันอยู่ (เผื่อเป็นแบบหมุนทิ้งหลังใช้): token แค่ "ใกล้หมด"
+  + `pgrep -x claude` เจอโปรเซส → ไม่แย่ง refresh, ให้ Claude Code ต่อเอง; script จะ refresh เอง
+  เฉพาะตอน token ตายสนิท (ตอนนั้นไม่มีอะไรรันอยู่แล้ว)
+
 > ✅ **ยืนยันบน macOS จริง:** token อยู่ที่
 > **keychain service = `"Claude Code-credentials"`, account = `$USER`**
 > โครงสร้าง blob **ห่อด้วย `{"claudeAiOauth":{...}}`** (ไม่ใช่ flat)
@@ -88,7 +102,7 @@ seven_day_overage_included   (อาจมี)
 | ไฟล์ | สถานะ |
 |------|-------|
 | `CLAUDE.md` | ← ไฟล์นี้ |
-| `claude-usage.sh` | ✅ ใช้ได้จริง — ดึง usage ผ่าน OAuth token (pretty + `--json` + `--force`), แกะ token ด้วย python3, มี cache/stale fallback ที่ `~/.claude/usage-cache.json` **+ กัน 429 ในตัว**: TTL cache 5 นาที (`CU_TTL`) → เรียกถี่แค่ไหนก็ยิง API ไม่เกิน 1 ครั้ง/TTL, เจอ 429 → พักยิง 15 นาที (`CU_BACKOFF`, state ที่ `~/.claude/usage-backoff`, `--force` ก็ไม่ข้าม) |
+| `claude-usage.sh` | ✅ ใช้ได้จริง — ดึง usage ผ่าน OAuth token (pretty + `--json` + `--force`), แกะ token ด้วย python3, มี cache/stale fallback ที่ `~/.claude/usage-cache.json` **+ กัน 429 ในตัว**: TTL cache 5 นาที (`CU_TTL`) → เรียกถี่แค่ไหนก็ยิง API ไม่เกิน 1 ครั้ง/TTL, เจอ 429 → พักยิง 15 นาที (`CU_BACKOFF`, state ที่ `~/.claude/usage-backoff`, `--force` ก็ไม่ข้าม) **+ auto-refresh ที่ทำงานจริง** (ส่ง UA `claude-usage-widget/1.0` — ดูข้อค้นพบ #4): token ตาย/ใกล้หมด → ต่ออายุเองแล้วเขียนกลับ keychain/ไฟล์, refresh ล้มเหลว → พัก 1 ชม. (`~/.claude/usage-refresh-backoff`), token ตาย+ต่อไม่ได้ → **ไม่ยิง usage เลย** (กัน edge แบน) **+ log** ทุกการยิง API/refresh ที่ `~/.claude/usage-widget.log` (ตัดท้ายเอง) |
 | `claude-usage.jsx` | ✅ widget Übersicht **แบบ A (การ์ดเต็ม)** — เรียก `claude-usage.sh --json`, เรนเดอร์จาก `limits[]`, รีเฟรช 10 นาที, สถานะ stale/error, ปุ่ม ↻ ใช้ `--force` และ**ไม่มีทางวาดทับข้อมูลดีด้วย error** (ผลเพี้ยน→คงค่าเดิม; `run()` ที่คืน Error ถูก reject ไม่ใช่ resolve), มี **CapyBeats** คาปิบาร่า sprite 72 เฟรม (8×9, CSS steps) ดุ๊กดิ๊กบนหัวการ์ด |
 | `capybeats.png` | spritesheet คาปิบาร่า (จาก `~/.codex/pets/capybeats`) — installer copy ไป widgets เป็น `claude-usage-capy.png` (widget อ้าง relative URL ผ่าน server ของ Übersicht) |
 | `install-claude-usage-widget.command` | ✅ installer ใหม่ — เช็ก/ติดตั้ง Übersicht, copy jsx + แก้ path สคริปต์ให้อัตโนมัติ, วอร์ม cache, รีเฟรช |
@@ -117,10 +131,10 @@ seven_day_overage_included   (อาจมี)
 > auto-reload โฟลเดอร์เอง. ถ้าเมนูบาร์ไม่มีไอคอน Übersicht ให้ **ติดตั้ง/เปิดใหม่ให้เรียบร้อย**
 > (`brew install --cask ubersicht` แล้วเปิดจาก Launchpad) แล้วรัน installer อีกครั้ง
 
-**ทางเลือกภายหลัง — token refresh อัตโนมัติ:** accessToken หมดอายุ ~ทุกไม่กี่ชม.
-(Claude Code ต่ออายุให้ตอนมันรัน). ถ้า widget เจอ 401 จะโชว์ค่าเดิม (stale) + ข้อความ
-"เปิด claude เพื่อรีเฟรช". ถ้าอยากให้สดตลอดแม้ไม่เปิด claude → ทำ LaunchAgent รัน
-`claude-usage.sh --json` เป็นระยะ (คนละ context ที่ token ยังสด) หรือทำ OAuth refresh flow เอง
+**✅ token refresh อัตโนมัติ — ใช้งานได้จริงแล้ว (แก้ 2026-07-13):** accessToken อายุ 8 ชม.
+เดิม refresh ล้มเหลวเงียบๆ ทุกครั้งเพราะ UA โดน Cloudflare บล็อก (ดูข้อค้นพบ #4) → token ตาย
+~ตี 5 ทุกวันแล้ว widget ค้าง 429 ยันเปิด Claude Code. ตอนนี้ script refresh เองได้ + มี log ที่
+`~/.claude/usage-widget.log` — เช้าไหน widget เพี้ยนให้ `grep -i 'refresh\|FAIL' ~/.claude/usage-widget.log` ดูก่อน
 
 ---
 
