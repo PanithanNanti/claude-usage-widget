@@ -103,7 +103,7 @@ seven_day_overage_included   (อาจมี)
 |------|-------|
 | `CLAUDE.md` | ← ไฟล์นี้ |
 | `claude-usage.sh` | ✅ ใช้ได้จริง — ดึง usage ผ่าน OAuth token (pretty + `--json` + `--force`), แกะ token ด้วย python3, มี cache/stale fallback ที่ `~/.claude/usage-cache.json` **+ กัน 429 ในตัว**: TTL cache 5 นาที (`CU_TTL`) → เรียกถี่แค่ไหนก็ยิง API ไม่เกิน 1 ครั้ง/TTL, เจอ 429 → พักยิง 15 นาที (`CU_BACKOFF`, state ที่ `~/.claude/usage-backoff`, `--force` ก็ไม่ข้าม) **+ auto-refresh ที่ทำงานจริง** (ส่ง UA `claude-usage-widget/1.0` — ดูข้อค้นพบ #4): token ตาย/ใกล้หมด → ต่ออายุเองแล้วเขียนกลับ keychain/ไฟล์, refresh ล้มเหลว → พัก 1 ชม. (`~/.claude/usage-refresh-backoff`), token ตาย+ต่อไม่ได้ → **ไม่ยิง usage เลย** (กัน edge แบน) **+ log** ทุกการยิง API/refresh ที่ `~/.claude/usage-widget.log` (ตัดท้ายเอง) |
-| `claude-usage.jsx` | ✅ widget Übersicht **แบบ A (การ์ดเต็ม)** — เรียก `claude-usage.sh --json`, เรนเดอร์จาก `limits[]`, รีเฟรช 10 นาที, สถานะ stale/error, ปุ่ม ↻ ใช้ `--force` และ**ไม่มีทางวาดทับข้อมูลดีด้วย error** (ผลเพี้ยน→คงค่าเดิม; `run()` ที่คืน Error ถูก reject ไม่ใช่ resolve), มี **CapyBeats** คาปิบาร่า sprite 72 เฟรม (8×9, CSS steps) ดุ๊กดิ๊กบนหัวการ์ด |
+| `claude-usage.jsx` | ✅ widget Übersicht **แบบ A (การ์ดเต็ม)** — เรียก `claude-usage.sh --json`, เรนเดอร์จาก `limits[]`, รีเฟรช 10 นาที, สถานะ stale/error, ปุ่ม ↻ ใช้ `--force` และ**ไม่มีทางวาดทับข้อมูลดีด้วย error** (ผลเพี้ยน→คงค่าเดิม; `run()` ที่คืน Error ถูก reject ไม่ใช่ resolve), มี **CapyBeats** คาปิบาร่า sprite 72 เฟรม (8×9, CSS steps) ดุ๊กดิ๊กบนหัวการ์ด, มี **daily pacing**: weekly limit โชว์ "วันนี้ควรหยุดที่ ~X%" + เส้นขีดบน bar — anchor %ต้นวันไว้ใน localStorage (`claudeUsageDailyAnchor2`, anchor ใหม่เมื่อขึ้นวันใหม่/รอบสัปดาห์ใหม่ เฉพาะจากข้อมูลที่ fetch วันนี้จริง กัน cache ค้าง) แล้วคิด เป้า = anchor + (100−anchor)/วันที่เหลือ (**เศษทศนิยม** เป๊ะตามชั่วโมงจริงถึง reset เช่น 4.18 วัน; วันรีเซ็ตเหลือ <1 วัน → เป้าชน cap 100 = ปลดล็อกที่เหลือทั้งหมด) → ใช้เกิน/ต่ำกว่าเป้า วันถัดไปปรับโควตาเองอัตโนมัติ |
 | `capybeats.png` | spritesheet คาปิบาร่า (จาก `~/.codex/pets/capybeats`) — installer copy ไป widgets เป็น `claude-usage-capy.png` (widget อ้าง relative URL ผ่าน server ของ Übersicht) |
 | `install-claude-usage-widget.command` | ✅ installer ใหม่ — เช็ก/ติดตั้ง Übersicht, copy jsx + แก้ path สคริปต์ให้อัตโนมัติ, วอร์ม cache, รีเฟรช |
 | `uninstall-claude-usage-widget.command` | ตัวถอน widget/Übersicht + ลบ config เก่า |
@@ -115,7 +115,7 @@ seven_day_overage_included   (อาจมี)
 
 ---
 
-## 🎯 สถานะงาน (อัปเดต 2026-07-10)
+## 🎯 สถานะงาน (อัปเดต 2026-07-23)
 
 **✅ ข้อ 1–3 เสร็จแล้ว:** token discovery แก้ได้, ยืนยัน JSON จริง (`limits[]`),
 สร้าง+ติดตั้ง widget แบบ A ลง Übersicht เรียบร้อย (ดึงข้อมูลได้สถานะ `live`)
@@ -135,6 +135,27 @@ seven_day_overage_included   (อาจมี)
 เดิม refresh ล้มเหลวเงียบๆ ทุกครั้งเพราะ UA โดน Cloudflare บล็อก (ดูข้อค้นพบ #4) → token ตาย
 ~ตี 5 ทุกวันแล้ว widget ค้าง 429 ยันเปิด Claude Code. ตอนนี้ script refresh เองได้ + มี log ที่
 `~/.claude/usage-widget.log` — เช้าไหน widget เพี้ยนให้ `grep -i 'refresh\|FAIL' ~/.claude/usage-widget.log` ดูก่อน
+
+**✅ Daily pacing — เป้าใช้งานรายวันบน weekly limits (เพิ่ม 2026-07-23):**
+ผู้ใช้อยากรู้ว่า "วันนี้ควรหยุดใช้ที่ประมาณเท่าไหร่" แทนที่จะเห็นแค่ % สะสม
+- **สูตร:** เป้าวันนี้ = `anchor + (100 − anchor) / daysLeft` — แบ่งโควตาที่**เหลือจริง**
+  เท่าๆ กันตามเวลาที่เหลือถึงรีเซ็ต → วันไหนใช้เกิน/ต่ำกว่าเป้า โควตาต่อวันของวันถัดไป
+  หด/ขยายเองอัตโนมัติ (adaptive ตามที่ผู้ใช้ต้องการ)
+- **anchor:** จำ % ตอนต้นวันไว้ใน localStorage key `claudeUsageDailyAnchor2`
+  (แยก entry ต่อ limit: `weekly_all` / `weekly_scoped:<ชื่อโมเดล>`) → เป้า**คงที่ทั้งวัน**
+  ไม่วิ่งหนีตามการใช้ระหว่างวัน; re-anchor เมื่อขึ้นวันใหม่ (local date เปลี่ยน) หรือ
+  `resets_at` เปลี่ยน (ขึ้นรอบสัปดาห์ใหม่) — **เฉพาะจากข้อมูลที่ `_fetched_at` เป็นวันนี้จริง**
+  (กัน cache ค้างจากเมื่อวานมาตั้ง anchor เพี้ยนตอนเพิ่งตื่นเครื่อง)
+- **daysLeft เป็นเศษทศนิยมเป๊ะตามชั่วโมง** (เช่น 4.18 วัน — ผู้ใช้เลือกเองหลังเทียบกับ
+  แบบ ceil): ไม่มีโควตาไปกองวันสุดท้าย; วันรีเซ็ตเหลือ <1 วัน → หารด้วยค่า <1 เป้าพุ่งชน
+  cap 100 = ปลดล็อกที่เหลือทั้งหมดให้ใช้ก่อนรีเซ็ต
+  (key เดิม `claudeUsageDailyAnchor` ของสูตร ceil ถูกทิ้ง — เปลี่ยนชื่อ key เพื่อบังคับ re-anchor)
+- **แสดงผล:** เส้นขีดขาว (`.cu-mark`) บน progress bar ที่ตำแหน่งเป้า + บรรทัด `.cu-daily`
+  ใต้ bar — ปกติสีฟ้า "วันนี้ควรหยุดที่ ~X% · ใช้ได้อีก Y% · เหลือ Z.Z วัน",
+  เกินเป้าเป็นสีเหลือง "เกินเป้าวันนี้ +Y% (เป้า ~X%)" — โชว์ทั้ง weekly_all และ weekly_scoped
+  (session ไม่มี — pacing รายวันไม่มีความหมายกับ limit 5 ชม.)
+- ทดสอบกับข้อมูลจริง: ใช้ไป 33%, เหลือ 4.18 วัน → เป้า ~49% (ใช้ได้อีก ~16%) ✓
+  deploy ลง Übersicht แล้ว (sed แก้ path แบบเดียวกับ installer)
 
 ---
 

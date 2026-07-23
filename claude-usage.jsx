@@ -56,8 +56,12 @@ export const className = `
   .cu-name { font-size: 12.5px; font-weight: 500; color: #f2f2f5; }
   .cu-pct { font-size: 11.5px; font-weight: 600; color: #b6b6be; }
   .cu-reset { font-size: 10.5px; color: #86868f; margin-top: 5px; }
-  .cu-track { height: 7px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .cu-track { position: relative; height: 7px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
   .cu-fill { height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+  .cu-mark { position: absolute; top: 0; width: 2px; height: 100%;
+    background: rgba(255,255,255,0.85); box-shadow: 0 0 3px rgba(0,0,0,0.6); }
+  .cu-daily { font-size: 10px; color: #9db4e8; margin-top: 4px; }
+  .cu-daily.over { color: #f0a728; }
   .cu-err { font-size: 12px; color: #d6d6dc; line-height: 1.55; padding: 4px 0 8px; }
 
   .cu-foot { display: flex; align-items: center; gap: 7px; margin-top: 14px;
@@ -125,22 +129,54 @@ function resetAbsolute(iso) {
   const d = new Date(iso), days = ["อา", "จ", "อ", "พ", "พฤ", "ศ", "ส"];
   return "รีเซ็ต " + days[d.getDay()] + " " + d.getDate() + "/" + pad2(d.getMonth() + 1) + " " + fmtClock(d);
 }
+// ── เป้าใช้งานรายวัน (daily pacing) สำหรับ weekly limits ──
+// หลักการ: แบ่งโควตาที่ "เหลือจริง" เท่าๆ กันตามจำนวนวันที่เหลือถึงรีเซ็ต
+// ต้นวันแรกที่เห็นข้อมูล → anchor ค่า % ไว้ แล้วเป้าวันนี้ = anchor + (100−anchor)/วันที่เหลือ
+// เป้าคงที่ทั้งวัน (ไม่ขยับตามการใช้ระหว่างวัน) — พอขึ้นวันใหม่ค่อย anchor ใหม่จากค่าจริง
+// → วันไหนใช้เกิน/ต่ำกว่าเป้า โควตาต่อวันของวันถัดๆ ไปจะปรับลด/เพิ่มให้เองอัตโนมัติ
+const ANCHOR_KEY = "claudeUsageDailyAnchor2"; // v2: daysLeft เป็นเศษทศนิยม (เป๊ะตามชั่วโมง)
+function dayKeyLocal(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+function dailyBudget(id, pct, resetIso, fetchedIso) {
+  if (!resetIso) return null;
+  const now = new Date(), msLeft = new Date(resetIso).getTime() - now.getTime();
+  if (!(msLeft > 0)) return null;
+  const daysLeft = msLeft / 86400000; // เศษทศนิยม เช่น 4.18 วัน — เศษวันท้ายได้โควตาตามสัดส่วนชั่วโมงจริง
+  // ต่ำกว่า 1 วัน (วันรีเซ็ต) → หารด้วยค่า <1 ทำให้เป้าพุ่งถึง 100 (ถูก cap) = ปลดล็อกโควตาที่เหลือทั้งหมด
+  let store = {};
+  try { store = JSON.parse(lsGet(ANCHOR_KEY)) || {}; } catch (e) {}
+  const today = dayKeyLocal(now);
+  let a = store[id];
+  // anchor ใหม่เมื่อขึ้นวันใหม่/ขึ้นรอบสัปดาห์ใหม่ — เฉพาะจากข้อมูลที่ดึงมา "วันนี้" จริงๆ
+  // (กัน cache ค้างจากเมื่อวานมาตั้ง anchor ต่ำเกินตอนเพิ่งตื่นเครื่อง)
+  const fetchedToday = fetchedIso && dayKeyLocal(new Date(fetchedIso)) === today;
+  if ((!a || a.day !== today || a.reset !== resetIso) && fetchedToday) {
+    a = { day: today, pct: pct, days: daysLeft, reset: resetIso };
+    store[id] = a; lsSet(ANCHOR_KEY, JSON.stringify(store));
+  }
+  if (!a || a.reset !== resetIso) return null;
+  const target = Math.min(100, a.pct + (100 - a.pct) / a.days);
+  return { target: target, left: target - pct, days: daysLeft };
+}
 function toRows(data) {
   const rows = [], limits = (data && data.limits) || [];
+  const fetched = data && data._fetched_at;
   if (limits.length) {
     for (const lim of limits) {
       const pct = Math.round(lim.percent || 0);
       if (lim.kind === "session") rows.push({ name: "เซสชันปัจจุบัน", pct, reset: resetRelative(lim.resets_at) });
-      else if (lim.kind === "weekly_all") rows.push({ name: "สัปดาห์นี้ (ทุกโมเดล)", pct, reset: resetAbsolute(lim.resets_at) });
+      else if (lim.kind === "weekly_all") rows.push({ name: "สัปดาห์นี้ (ทุกโมเดล)", pct, reset: resetAbsolute(lim.resets_at),
+        budget: dailyBudget("weekly_all", lim.percent || 0, lim.resets_at, fetched) });
       else if (lim.kind === "weekly_scoped" && pct > 0) {
         const nm = ((lim.scope || {}).model || {}).display_name || "โมเดล";
-        rows.push({ name: "สัปดาห์ · " + nm, pct, reset: resetAbsolute(lim.resets_at) });
+        rows.push({ name: "สัปดาห์ · " + nm, pct, reset: resetAbsolute(lim.resets_at),
+          budget: dailyBudget("weekly_scoped:" + nm, lim.percent || 0, lim.resets_at, fetched) });
       }
     }
   } else if (data) {
     const fh = data.five_hour || {}, sd = data.seven_day || {};
     rows.push({ name: "เซสชันปัจจุบัน", pct: Math.round(fh.utilization || 0), reset: resetRelative(fh.resets_at) });
-    rows.push({ name: "สัปดาห์นี้ (ทุกโมเดล)", pct: Math.round(sd.utilization || 0), reset: resetAbsolute(sd.resets_at) });
+    rows.push({ name: "สัปดาห์นี้ (ทุกโมเดล)", pct: Math.round(sd.utilization || 0), reset: resetAbsolute(sd.resets_at),
+      budget: dailyBudget("weekly_all", sd.utilization || 0, sd.resets_at, fetched) });
   }
   return rows;
 }
@@ -340,10 +376,22 @@ const CAPY_CSS =
 
 // ════════════════ painter (แหล่งวาดเดียว) ════════════════
 function rowHTML(r) {
+  const b = r.budget;
+  // เส้นขีดขาวบน bar = เป้าที่ควรหยุดของวันนี้ + บรรทัดบอกว่าใช้ได้อีกเท่าไหร่
+  const mark = b ? '<div class="cu-mark" style="left:' + b.target.toFixed(2) + '%" title="เป้าวันนี้"></div>' : "";
+  let daily = "";
+  if (b) {
+    const t = Math.round(b.target);
+    const dTxt = b.days.toFixed(1);
+    daily = b.left >= 0
+      ? '<div class="cu-daily">วันนี้ควรหยุดที่ ~' + t + '% · ใช้ได้อีก ' + b.left.toFixed(1) + '% · เหลือ ' + dTxt + ' วัน</div>'
+      : '<div class="cu-daily over">เกินเป้าวันนี้ +' + (-b.left).toFixed(1) + '% (เป้า ~' + t + '%) · เหลือ ' + dTxt + ' วัน</div>';
+  }
   return '<div class="cu-row"><div class="cu-row-top"><span class="cu-name">' + esc(r.name) +
     '</span><span class="cu-pct">' + r.pct + '% ใช้ไป</span></div>' +
     '<div class="cu-track"><div class="cu-fill" style="width:' + Math.max(2, r.pct) +
-    '%;background:' + barColor(r.pct) + '"></div></div>' +
+    '%;background:' + barColor(r.pct) + '"></div>' + mark + '</div>' +
+    daily +
     (r.reset ? '<div class="cu-reset">' + esc(r.reset) + '</div>' : "") + '</div>';
 }
 
