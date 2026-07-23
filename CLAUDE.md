@@ -89,6 +89,22 @@ seven_day_overage_included   (อาจมี)
 > (fallback ไป five_hour/seven_day ถ้าไม่มี). บาง field เช่น `seven_day_opus/sonnet`
 > อาจเป็น `null` แล้วแต่บัญชี — โค้ดต้องกันกรณี null/ไม่มี field เสมอ
 
+### 🧾 กฎ "Fable 50%" (มีผล 2026-07-20) — ที่มาของ bar `weekly_scoped: Fable`
+Anthropic รวม **Claude Fable 5** เข้าแผน Max/Team Premium โดยใช้ได้**สูงสุด 50% ของ weekly limit**
+(Pro/Team Standard ไม่รวม — ต้องซื้อ usage credits; ได้เครดิตชดเชยครั้งเดียว $100)
+- **ไม่ใช่โควตาแถม** — Fable ดึงจาก weekly ก้อนเดียวกับโมเดลอื่น แค่ถูกแคปไม่ให้กินเกินครึ่ง
+  → ใช้ Fable แล้วเลขขึ้น **2 bar พร้อมกัน**: weekly_all + weekly_scoped(Fable)
+- **% ของ bar Fable คิดเทียบกับแคป 50% ของมันเอง** — Fable bar เต็ม 100% = Fable กินไป
+  50 จุดของ weekly รวม (Fable 0→100% ดัน weekly_all ขึ้น +50 จุด)
+- **Fable โดนตัดเมื่ออย่างใดอย่างหนึ่งเต็มก่อน**: Fable bar เต็ม (ยังใช้โมเดลอื่นต่อได้)
+  หรือ weekly_all เต็ม (หยุดหมดทุกโมเดล) — ชนแคป Fable แล้วอยากใช้ต่อ = ซื้อ credits
+- **ผลกับ widget: ไม่ต้องแก้อะไร** — เรนเดอร์จาก `limits[]` อยู่แล้ว bar Fable ก็คือแคปนี้,
+  daily pacing คิดให้ weekly_scoped ด้วยอยู่แล้ว. ถ้าเห็น bar Fable เต็มทั้งที่ weekly รวม
+  ยังเหลือ = พฤติกรรมถูกต้องตามกฎ ไม่ใช่ bug
+- อ้างอิง: help center "Claude Fable 5 on your plan" + ประกาศ @claudeai 2026-07-18
+  (หมายเหตุ: โปรโมชัน +50% weekly ของ Claude Code จบ 20 ก.ค. เช่นกัน — ฐาน limit หดกลับก่อน
+  แล้วแคป Fable 50% คิดจากฐานใหม่)
+
 ---
 
 ## 🔑 ค่าเฉพาะบัญชี (อ่านจาก credential อัตโนมัติ — ไม่ต้อง hardcode)
