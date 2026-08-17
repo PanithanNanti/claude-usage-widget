@@ -116,7 +116,10 @@ Claude Code เก็บ OAuth credential ไว้ที่ **Keychain**:
   ```
 - อ่านด้วย: `security find-generic-password -a "$USER" -w -s "Claude Code-credentials"`
 - `/usr/bin/security` อ่านได้โดย **ไม่มี GUI prompt** แม้ถูกเรียกจาก Übersicht (ทดสอบด้วย `launchctl asuser`)
-- บาง setup เก็บเป็นไฟล์ `~/.claude/.credentials.json` แทน (สคริปต์รองรับทั้งสองแบบ)
+- บาง setup เก็บเป็นไฟล์ `~/.claude/.credentials.json` แทน — สคริปต์อ่าน**ทั้งสองแหล่ง**แล้วเลือก
+  **อันที่ `expiresAt` ใหม่ที่สุด** (ไม่ใช่ "เจอที่ไหนก่อนใช้อันนั้น"): ถ้าไฟล์เก่าค้างอยู่จากการล็อกอิน
+  ครั้งก่อน มันจะบัง keychain ที่ Claude Code หมุนให้สดตลอด → refresh เจอ `invalid_grant` ทุกรอบ
+  แล้ว widget ค้างที่ค่าเดิมเป็นวันๆ (เคสจริง 2026-08-17)
 - **แกะ token ด้วย `python3` (parse JSON)** ไม่ใช่ `sed` — blob เป็นบรรทัดเดียวยาว sed พลาดง่าย
 
 ### โครงสร้าง response (`/api/oauth/usage`)
@@ -171,6 +174,7 @@ script เลย cap ตัวเอง:
 | การ์ดไม่ขึ้นเลย | คลิกไอคอน Übersicht บนเมนูบาร์ → **Refresh All Widgets** / เปิด **Show widgets on desktop** |
 | ไม่มีไอคอน Übersicht บนเมนูบาร์ | เปิดแอป Übersicht จาก Launchpad (หรือ `brew install --cask ubersicht` ใหม่) แล้วรัน installer อีกครั้ง |
 | การ์ดโชว์ไฟเหลือง/แดง "token หมดอายุ" | กดปุ่ม 🔑 บนการ์ด (หรือเปิด Terminal พิมพ์ `claude` เอง) แล้วกด ↻ รีเฟรช |
+| เลข/เวลาค้างอยู่ค่าเดิมเป็นวันๆ ทั้งที่ใช้ `claude` อยู่ | เช็ก `tail ~/.claude/usage-widget.log` — ถ้าเจอ `refresh FAIL: … Refresh token expired` ซ้ำๆ แปลว่ามี credential เก่าค้าง: ลบ `~/.claude/.credentials.json` (Claude Code ใช้ keychain อยู่แล้ว) + `rm ~/.claude/usage-refresh-backoff` แล้วกด ↻ |
 | ไฟเหลือง "พัก 429" | ปกติ — script โดน rate limit เลยพักยิง ~15 นาทีแล้วกลับมาเอง ระหว่างนั้นโชว์ค่าเดิม |
 | โชว์ทุกจอ | กดปุ่ม **🖥️** ท้ายการ์ด แล้วเลือกจอที่ต้องการ |
 | คาปิบาร่าไม่ขึ้น | เช็กว่ามี `claude-usage-capy.png` ในโฟลเดอร์ widgets (รัน installer อีกครั้งจะ copy ให้) |

@@ -154,24 +154,37 @@ TOKEN=""
 CRED_BLOB=""
 CRED_SRC=""   # แหล่งที่มา: "file:<path>" หรือ "keychain:<service>" (ใช้ตอนเขียน token ใหม่กลับ)
 
+# เก็บ candidate ทีละแหล่ง แล้วเลือก "อันที่สดที่สุด" (expiresAt มากสุด) — ห้ามใช้
+# "แหล่งแรกที่มี token ชนะ": เคสจริง 2026-08-17 ไฟล์ .credentials.json ค้างจาก 4 วันก่อน
+# (accessToken+refreshToken ตายทั้งคู่) บัง keychain ที่ Claude Code หมุนให้สดตลอด
+# → refresh เจอ invalid_grant ทุกรอบ, script skip usage, widget ค้างที่ค่าเก่าหลายวัน
+CRED_BEST_EXP=-1
+consider_cred() {  # $1 = blob, $2 = แหล่งที่มา (file:… / keychain:…)
+  [ -n "${1:-}" ] || return 0
+  T=$(printf '%s' "$1" | python3 -c "$PY_EXTRACT" 2>/dev/null)
+  [ -n "$T" ] || return 0
+  EXP=$(printf '%s' "$1" | python3 -c 'import sys, json
+try: d = json.load(sys.stdin)
+except Exception: print(0); sys.exit(0)
+o = d.get("claudeAiOauth", d) if isinstance(d, dict) else {}
+print(int((o.get("expiresAt") or 0)))' 2>/dev/null)
+  case "${EXP:-}" in (*[!0-9]*|"") EXP=0;; esac
+  if [ "$EXP" -gt "$CRED_BEST_EXP" ]; then
+    CRED_BEST_EXP="$EXP"; TOKEN="$T"; CRED_BLOB="$1"; CRED_SRC="$2"
+  fi
+}
+
 # 1a) ไฟล์ ~/.claude/.credentials.json (บาง setup เก็บที่นี่)
 CRED_FILE="$HOME/.claude/.credentials.json"
-if [ -z "$TOKEN" ] && [ -f "$CRED_FILE" ]; then
-  CRED_BLOB=$(cat "$CRED_FILE" 2>/dev/null)
-  TOKEN=$(printf '%s' "$CRED_BLOB" | python3 -c "$PY_EXTRACT" 2>/dev/null)
-  [ -n "$TOKEN" ] && CRED_SRC="file:$CRED_FILE"
-fi
+[ -f "$CRED_FILE" ] && consider_cred "$(cat "$CRED_FILE" 2>/dev/null)" "file:$CRED_FILE"
 
 # 1b) macOS Keychain — service "Claude Code-credentials", account = ชื่อผู้ใช้
 #     (ยืนยันแล้วบนเครื่องนี้: /usr/bin/security อ่านได้โดยไม่มี prompt แม้จาก GUI context)
-if [ -z "$TOKEN" ] && command -v security >/dev/null 2>&1; then
+if command -v security >/dev/null 2>&1; then
   for SVC in "Claude Code-credentials" "Claude Code"; do
     BLOB=$(security find-generic-password -a "$USER_NAME" -w -s "$SVC" 2>/dev/null) \
       || BLOB=$(security find-generic-password -w -s "$SVC" 2>/dev/null)
-    if [ -n "${BLOB:-}" ]; then
-      TOKEN=$(printf '%s' "$BLOB" | python3 -c "$PY_EXTRACT" 2>/dev/null)
-      [ -n "$TOKEN" ] && { CRED_BLOB="$BLOB"; CRED_SRC="keychain:$SVC"; break; }
-    fi
+    consider_cred "${BLOB:-}" "keychain:$SVC"
   done
 fi
 
