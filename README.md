@@ -23,6 +23,9 @@ token ในตัว — และมี **น้อง CapyBeats 🎧** คา
   (คิดเป็นเศษทศนิยมเป๊ะตามชั่วโมง เช่น 4.2 วัน — วันรีเซ็ตปลดล็อกที่เหลือทั้งหมด;
   anchor ค่าตอนต้นวัน → เป้าคงที่ทั้งวัน) วันไหนใช้เกิน/ต่ำกว่าเป้า
   โควตาต่อวันของวันถัดไปจะปรับลด/เพิ่มให้เองอัตโนมัติ
+  — bar per-model (เช่น **Fable**) ยัง**ถูกแคปด้วยโควตาที่ weekly รวมเหลือให้วันนี้**อีกชั้น
+  (ขึ้นข้อความ "จำกัดโดยโควตาสัปดาห์รวม") เพราะ Fable ดึงจาก weekly ก้อนเดียวกัน —
+  เดินตามเส้นตัวเองอย่างเดียวอาจไปชน weekly รวมก่อน = หยุดหมดทุกโมเดล
 - 🏷️ **ป้าย plan อัตโนมัติ** (Max 20× / Max 5× / Pro …) อ่านจาก credential ของแต่ละคน
 - 🎧 **CapyBeats** — คาปิบาร่า pixel-art 72 เฟรม โยกอยู่บนหัวการ์ด (CSS `steps()` ล้วน ไม่กิน CPU,
   ปรับขนาดได้ที่ `CAPY_SCALE`)
@@ -130,6 +133,15 @@ limits[]  { kind: session|weekly_all|weekly_scoped, percent, severity,
             resets_at, scope.model.display_name }   ← มี label สวย + per-model
 ```
 > oauth endpoint **ก็มี `limits[]`** (ไม่ใช่แค่ฝั่ง claude.ai) — widget เรนเดอร์จากตรงนี้เป็นหลัก
+
+### กฎ Fable 50% กับ daily pacing
+`percent` ของ bar `weekly_scoped` (Fable) คิดเทียบ **แคป 50% ของตัวมันเอง** ไม่ใช่ weekly ทั้งก้อน
+→ **Fable bar 100% = กิน weekly รวมไป 50 จุด** (1 จุดบน weekly_all = 2% บน bar Fable)
+- Fable ไม่ใช่โควตาแถม — ใช้ทีเดียวขึ้น 2 bar พร้อมกัน (weekly_all + weekly_scoped)
+- pacing จึงคิด 2 ชั้น: เป้าของ Fable เอง (`anchor + (100−anchor)/daysLeft`) แล้ว
+  **แคปด้วย `fablePct + 2 × (เป้า weekly_all − weekly_all ปัจจุบัน)`** (`capScopedBudget()` ใน jsx)
+- ตัวไหนตึงกว่าชนะ: ใช้ Fable ล้วน → เส้น Fable ตึงกว่า; ใช้โมเดลอื่นหนัก → weekly รวมตึงกว่า
+  แล้ว Fable จะถูกดึงลงมาตาม (ถ้า weekly รวมเกินเป้าวันนี้แล้ว เป้า Fable จะเป็น 0 = วันนี้ไม่ควรใช้เพิ่ม)
 
 ### token refresh / session หลุด
 - accessToken หมดอายุทุก ~1 ชม. (`expiresAt`), refreshToken อายุ ~28 วัน

@@ -157,19 +157,37 @@ function dailyBudget(id, pct, resetIso, fetchedIso) {
   const target = Math.min(100, a.pct + (100 - a.pct) / a.days);
   return { target: target, left: target - pct, days: daysLeft };
 }
+// ── แคปเป้าของ bar per-model (เช่น Fable) ด้วยโควตาที่ weekly รวมเหลือให้วันนี้ ──
+// bar per-model คิด % เทียบ "แคป 50% ของตัวเอง" → 1 จุดบน weekly_all = 2% บน bar นี้
+// เป้าของมันจึงเดินตามจังหวะตัวเองได้แค่เท่าที่ weekly รวมยังเหลือให้ ไม่งั้นเดินตามเส้น
+// per-model แล้วไปชน weekly_all ก่อน = หยุดหมดทุกโมเดล (ดูกฎ Fable 50% ใน CLAUDE.md)
+const SCOPED_SHARE = 0.5; // สัดส่วนของ weekly รวมที่ bar per-model กินได้เต็มที่
+function capScopedBudget(b, pct, allPct, allB) {
+  if (!b || !allB || allPct == null) return b;
+  const room = (allB.target - allPct) / SCOPED_SHARE; // weekly รวมเหลือให้อีกกี่ % บนสเกลของ bar นี้
+  const capped = Math.min(b.target, pct + room);
+  if (capped >= b.target - 0.05) return b; // เส้นตัวเองตึงกว่าอยู่แล้ว — ไม่ต้องแคป
+  return { target: capped, left: capped - pct, days: b.days, capped: true };
+}
 function toRows(data) {
   const rows = [], limits = (data && data.limits) || [];
   const fetched = data && data._fetched_at;
   if (limits.length) {
+    // weekly_all ต้องคิดก่อน — bar per-model เอาโควตาที่ weekly รวมเหลือให้มาแคปเป้าอีกชั้น
+    const all = limits.find((l) => l.kind === "weekly_all");
+    const allPct = all ? (all.percent || 0) : null;
+    const allBudget = all ? dailyBudget("weekly_all", allPct, all.resets_at, fetched) : null;
     for (const lim of limits) {
       const pct = Math.round(lim.percent || 0);
       if (lim.kind === "session") rows.push({ name: "เซสชันปัจจุบัน", pct, reset: resetRelative(lim.resets_at) });
       else if (lim.kind === "weekly_all") rows.push({ name: "สัปดาห์นี้ (ทุกโมเดล)", pct, reset: resetAbsolute(lim.resets_at),
-        budget: dailyBudget("weekly_all", lim.percent || 0, lim.resets_at, fetched) });
-      else if (lim.kind === "weekly_scoped" && pct > 0) {
+        budget: allBudget });
+      else if (lim.kind === "weekly_scoped") {
+        // ไม่กรอง pct > 0 แล้ว — วันแรกของสัปดาห์ที่ยัง 0% ต้องโชว์ ไม่งั้น anchor ไม่ถูกตั้ง
         const nm = ((lim.scope || {}).model || {}).display_name || "โมเดล";
+        const own = dailyBudget("weekly_scoped:" + nm, lim.percent || 0, lim.resets_at, fetched);
         rows.push({ name: "สัปดาห์ · " + nm, pct, reset: resetAbsolute(lim.resets_at),
-          budget: dailyBudget("weekly_scoped:" + nm, lim.percent || 0, lim.resets_at, fetched) });
+          budget: capScopedBudget(own, lim.percent || 0, allPct, allBudget) });
       }
     }
   } else if (data) {
@@ -378,14 +396,16 @@ const CAPY_CSS =
 function rowHTML(r) {
   const b = r.budget;
   // เส้นขีดขาวบน bar = เป้าที่ควรหยุดของวันนี้ + บรรทัดบอกว่าใช้ได้อีกเท่าไหร่
-  const mark = b ? '<div class="cu-mark" style="left:' + b.target.toFixed(2) + '%" title="เป้าวันนี้"></div>' : "";
+  const markAt = b ? Math.max(0, Math.min(100, b.target)) : 0; // เป้าติดลบได้ตอนโดนแคป → กันหลุดขอบ bar
+  const mark = b ? '<div class="cu-mark" style="left:' + markAt.toFixed(2) + '%" title="เป้าวันนี้"></div>' : "";
   let daily = "";
   if (b) {
-    const t = Math.round(b.target);
+    const t = Math.max(0, Math.round(b.target)); // เป้าติดลบ (โดนแคป) อ่านว่า 0 = วันนี้ไม่ควรใช้เพิ่ม
     const dTxt = b.days.toFixed(1);
+    const why = b.capped ? ' · จำกัดโดยโควตาสัปดาห์รวม' : "";
     daily = b.left >= 0
-      ? '<div class="cu-daily">วันนี้ควรหยุดที่ ~' + t + '% · ใช้ได้อีก ' + b.left.toFixed(1) + '% · เหลือ ' + dTxt + ' วัน</div>'
-      : '<div class="cu-daily over">เกินเป้าวันนี้ +' + (-b.left).toFixed(1) + '% (เป้า ~' + t + '%) · เหลือ ' + dTxt + ' วัน</div>';
+      ? '<div class="cu-daily">วันนี้ควรหยุดที่ ~' + t + '% · ใช้ได้อีก ' + b.left.toFixed(1) + '% · เหลือ ' + dTxt + ' วัน' + why + '</div>'
+      : '<div class="cu-daily over">เกินเป้าวันนี้ +' + (-b.left).toFixed(1) + '% (เป้า ~' + t + '%) · เหลือ ' + dTxt + ' วัน' + why + '</div>';
   }
   return '<div class="cu-row"><div class="cu-row-top"><span class="cu-name">' + esc(r.name) +
     '</span><span class="cu-pct">' + r.pct + '% ใช้ไป</span></div>' +
