@@ -112,6 +112,22 @@ log มี `refresh FAIL: http 400 invalid_grant "Refresh token expired"` + `ski
 สัญญาณเดียวคือบรรทัดเล็กๆ "ค่าล่าสุด 10:08" กับไฟเหลือง → **บทเรียน: ค่าที่ค้างเกิน N ชม.
 ควรเด่นกว่านี้** (ยังไม่ได้ทำ — ถ้าจะทำต่อ ให้เทียบ `_fetched_at` กับเวลาปัจจุบันแล้วเตือนเมื่อเกิน ~1 ชม.)
 
+### 6) ⚠️ "widget ไม่ขึ้นหลังอัปเดต macOS 27" — ไม่ใช่ OS พัง แต่เป็น screen lock ของเราเอง (2026-09-17)
+อาการ: อัปเดตเป็น macOS 27.0 แล้วการ์ดหายทั้งจอ ทั้งที่ Übersicht 1.6.82 รันปกติ, script `usage ok` ทุก 10 นาที,
+หน้าต่าง desktop-level ของ Übersicht อยู่ครบและอยู่เหนือ wallpaper (เช็กด้วย `CGWindowListCopyWindowInfo`)
+- ต้นเหตุ: localStorage `claudeUsageWidgetScreen = "1080x1920"` (ล็อกไว้กับจอแนวตั้ง) แต่หลังรีบูต
+  ระบบเห็นแค่จอ `3440x1440` → `applyScreenVisibility()` ซ่อนการ์ดบน**ทุกจอที่มี** = หายเกลี้ยง
+  และปุ่ม 🖥️ ที่ใช้แก้ก็อยู่บนการ์ดที่ถูกซ่อน → ผู้ใช้แก้เองไม่ได้
+- ✅ แก้: ซ่อนเฉพาะเมื่อจอที่ล็อก **ยังมีชีวิต** (`screenAlive()` — heartbeat `registerThisScreen()` ทุก 15 วิ
+  จากลูป sync, ถือว่าตายเมื่อเงียบเกิน 60 วิ). ค่าที่ล็อกไม่ถูกลบ → เสียบจอกลับมาการ์ดย้ายกลับเอง
+- 🐞 บั๊กแฝงที่เจอตอน deploy: guard `!window.__cuVisTimer` ทำให้ hot-reload เหลือ **timer ของโค้ดรุ่นเก่า**
+  รันต่อ (ซ่อนการ์ดซ้ำทุก 1.5 วิ) → เปลี่ยนเป็น `clearInterval` แล้วตั้งใหม่ทุกครั้งที่โมดูลโหลด.
+  เครื่องที่ยังรันโค้ดเก่าต้อง **Quit + เปิด Übersicht ใหม่ 1 ครั้ง** หลังอัปเดต jsx
+- ดีบั๊กเคสแบบนี้: อ่าน localStorage ของ webview ได้ตรงๆ ที่
+  `~/Library/WebKit/tracesOf.Uebersicht/WebsiteData/Default/*/*/LocalStorage/localstorage.sqlite3`
+  (ตาราง `ItemTable`, value เป็น UTF-16LE — copy ออกมาก่อนเปิด). เปิด `127.0.0.1:41416` ใน Chrome
+  **ใช้ไม่ได้** (client ต้องมี `window.webkit.messageHandlers`)
+
 ---
 
 ## 📊 โครงสร้าง response ของ /api/oauth/usage
@@ -180,13 +196,32 @@ Anthropic รวม **Claude Fable 5** เข้าแผน Max/Team Premium �
 | `uninstall-claude-usage-widget.command` | ตัวถอน widget/Übersicht + ลบ config เก่า |
 | `~/Library/Application Support/Übersicht/widgets/claude-usage.jsx` | ✅ **ติดตั้งลงแล้ว** (path สคริปต์ถูกแก้เป็น absolute แล้ว) |
 | `~/.claude/usage-cache.json` | cache ก้อนล่าสุด (widget ใช้โชว์ค่าเดิมตอน token หมดอายุ) |
+| `app/` | ✅ **ClaudeUsageBar** — แอป native macOS (SwiftPM, menu bar + การ์ดระดับ desktop) **แทน Übersicht**, ใช้ `claude-usage.sh --json` ตัวเดิม (bundle ไว้ใน `.app`). สเปก/บทเรียนอยู่ที่ `app/PLAN.md`. เทสต์ `cd app && swift run UsageCoreChecks` (176 ข้อ), ติดตั้ง `bash app/scripts/install-app.sh` → `~/Applications/ClaudeUsageBar.app` |
 
 > หมายเหตุ: `widget-mockups.html` (ดีไซน์ 3 แบบ) และ installer เก่าที่ใช้ sessionKey **ไม่มีอยู่แล้ว**
 > ในโฟลเดอร์ — สเปกดีไซน์แบบ A ที่เลือกไว้อยู่ท้ายไฟล์นี้ (widget สร้างตามสเปกนั้น)
 
 ---
 
-## 🎯 สถานะงาน (อัปเดต 2026-07-23)
+## 🎯 สถานะงาน (อัปเดต 2026-09-17)
+
+**✅ แอป native `ClaudeUsageBar` ใช้งานจริงแล้ว (2026-09-17):** ติดตั้งที่ `~/Applications`, เปิด
+"เปิดแอปตอนล็อกอินเข้าเครื่อง" แล้ว (SMAppService: enabled/allowed — เช็กด้วย `sfltool dumpbtm | grep -A8 ClaudeUsageBar`),
+ยืนยันบนเครื่องจริง: เมนูบาร์/การ์ดโชว์ตรงกับ API (session 15% · weekly 30%), CPU 0%, RAM ~55 MB, ไม่มีโปรเซสค้าง.
+Übersicht ไม่ได้รันแล้ว — widget jsx เดิมยังอยู่ในโฟลเดอร์ widgets (ถอนด้วย `uninstall-claude-usage-widget.command` เมื่อพร้อม)
+
+**✅ เก็บงานก่อน push ขึ้น GitHub สาธารณะ (2026-09-17):**
+- bundle id เปลี่ยนเป็น **`io.github.panithannanti.ClaudeUsageBar`** (id เดิมผูกกับชื่อองค์กร ไม่ควรอยู่ใน repo สาธารณะ)
+  → ย้าย prefs ด้วย `defaults export/import`, ปิด login item ของ id เก่าก่อน แล้วเปิดของ id ใหม่ (เช็กในเมนูแอปมี ✓)
+- ปุ่ม **`>_`** ท้ายการ์ด + เมนู "เปิด terminal ที่ ~/dev" (⌘T): เปิด iTerm2 (ไม่มีใช้ Terminal.app) ที่ `~/dev`
+  ด้วย `NSWorkspace.open([folder], withApplicationAt:)` — **ไม่ประกอบ shell/AppleScript จาก path** (กัน injection);
+  เปลี่ยนโฟลเดอร์: `defaults write io.github.panithannanti.ClaudeUsageBar terminal.folder "~/อื่น"`; โฟลเดอร์ไม่มี → home
+- security ของ `claude-usage.sh`: (1) Bearer token เคยอยู่ใน argv ของ `curl` = โปรเซสอื่นเห็นผ่าน `ps` → ส่งผ่าน stdin
+  (`printf … | curl -H @-`) (2) `umask 077` → cache/log/backoff สร้างเป็น 600
+  ⚠️ ที่ยังเหลือ: ตอน refresh สำเร็จ `security add-generic-password -w "$NEWBLOB"` ยังส่ง blob ใน argv ชั่วขณะ
+  (`security` ไม่มีทางอ่าน password จาก stdin แบบไม่ใช้ tty) — เกิดเฉพาะตอน script refresh เอง (นานๆ ครั้ง)
+- ก่อน push ทุกครั้ง scan: `git grep -nIE 'sk-ant-(oat|ort)|/Users/[a-z]|@[a-z0-9-]+\.(com|co\.th)' HEAD` + ชื่อองค์กร/โปรเจกต์อื่น
+  (token ปลอมในเทสต์ = `TESTTOKEN` ได้) และเช็กทุก commit ที่ยังไม่ push ด้วย ไม่ใช่แค่ HEAD
 
 **✅ ข้อ 1–3 เสร็จแล้ว:** token discovery แก้ได้, ยืนยัน JSON จริง (`limits[]`),
 สร้าง+ติดตั้ง widget แบบ A ลง Übersicht เรียบร้อย (ดึงข้อมูลได้สถานะ `live`)
@@ -227,6 +262,15 @@ Anthropic รวม **Claude Fable 5** เข้าแผน Max/Team Premium �
   (session ไม่มี — pacing รายวันไม่มีความหมายกับ limit 5 ชม.)
 - ทดสอบกับข้อมูลจริง: ใช้ไป 33%, เหลือ 4.18 วัน → เป้า ~49% (ใช้ได้อีก ~16%) ✓
   deploy ลง Übersicht แล้ว (sed แก้ path แบบเดียวกับ installer)
+- 🐞 **บั๊ก jitter ของ `resets_at` (พบ 2026-09-17 ตอน port ไป Swift):** `resets_at` จาก API
+  ขยับเศษวินาทีทุกครั้งที่ fetch (เช่น `...06:00:00.891471` vs `...06:00:01.126168` — รีเซ็ต
+  เดียวกัน) → เดิม `dailyBudget()` เทียบ ISO ดิบ เห็นเป็น "รอบใหม่" เกือบทุก poll (~ทุก 10 นาที)
+  → anchor รีเซ็ตทับตัวเองด้วยค่า pct ปัจจุบันตลอด = เป้าวิ่งไล่ตามการใช้งานแทนที่จะคงที่
+  → **แก้:** เพิ่ม `resetKey(iso)` ปัดเป็นนาทีที่ใกล้ที่สุด (`Math.round(t/60000)`, คืน `null`
+  ถ้า parse ไม่ออก) แล้วเทียบ key แทน ISO ดิบ ทั้งตอนเช็ค re-anchor และเช็ค cycle ตรงกัน;
+  anchor เก่าที่ยังเก็บ ISO ดิบอยู่ (`a.reset`) ใช้ `anchorResetKey()` normalize ก่อนเทียบ
+  กัน anchor วันนี้ที่มีอยู่แล้วโดนทิ้งฟรีๆ ตอน deploy รอบนี้ (`capScopedBudget` ไม่ได้เทียบ
+  reset string เอง — ใช้แค่ target ตัวเลขจาก `dailyBudget` จึงไม่ต้องแก้)
 
 ---
 

@@ -75,6 +75,20 @@ installer จะ:
 bash uninstall-claude-usage-widget.command
 ```
 
+### 🆕 ทางเลือก: แอป native `ClaudeUsageBar` (ไม่ต้องใช้ Übersicht)
+แอป macOS (SwiftPM) — ตัวเลข % บนเมนูบาร์ + การ์ดแบบเดียวกันลอยระดับ desktop, ใช้ `claude-usage.sh` ตัวเดิม
+(bundle อยู่ในแอป) ต้องมี Command Line Tools (`xcode-select --install`) ไม่ต้องมี Xcode
+
+```bash
+bash app/scripts/install-app.sh       # build → ~/Applications/ClaudeUsageBar.app แล้วเปิด
+bash app/scripts/uninstall-app.sh     # ถอน
+```
+ให้เปิดเองตอนเปิดเครื่อง: คลิกตัวเลขบนเมนูบาร์ → **เปิดแอปตอนล็อกอินเข้าเครื่อง**
+ปุ่ม **`>_`** ท้ายการ์ด (หรือเมนู → เปิด terminal, ⌘T) เปิด iTerm2 (ไม่มีใช้ Terminal.app) ที่ `~/dev` —
+เปลี่ยนโฟลเดอร์ได้ด้วย `defaults write io.github.panithannanti.ClaudeUsageBar terminal.folder "~/Projects"`
+(ไม่มีโฟลเดอร์นั้น → เปิดที่ home)
+· เทสต์ logic: `cd app && swift run UsageCoreChecks` · รายละเอียด/สเปก: [`app/PLAN.md`](app/PLAN.md)
+
 ---
 
 ## 🧩 ไฟล์ในโปรเจกต์
@@ -86,6 +100,8 @@ bash uninstall-claude-usage-widget.command
 | `capybeats.png` | spritesheet คาปิบาร่า 72 เฟรม (8×9, เฟรมละ 192×208) — เอาไปใช้ต่อในโปรเจกต์อื่นได้เลย |
 | `install-claude-usage-widget.command` | ตัวติดตั้ง (idempotent — รันซ้ำเพื่ออัปเดต widget ได้) |
 | `uninstall-claude-usage-widget.command` | ตัวถอน |
+| `app/` | แอป native `ClaudeUsageBar` (SwiftPM) — ทางเลือกแทน Übersicht |
+| `claude_limit.png` | ไอคอนแอป (build-app.sh แปลงเป็น `AppIcon.icns`) |
 | `CLAUDE.md` | บันทึกการทำงาน/ความรู้แบบละเอียด (ภาษาไทย) |
 | `snapshort/image.png` | ภาพตัวอย่าง widget บน desktop จริง |
 
@@ -188,6 +204,7 @@ script เลย cap ตัวเอง:
 | การ์ดโชว์ไฟเหลือง/แดง "token หมดอายุ" | กดปุ่ม 🔑 บนการ์ด (หรือเปิด Terminal พิมพ์ `claude` เอง) แล้วกด ↻ รีเฟรช |
 | เลข/เวลาค้างอยู่ค่าเดิมเป็นวันๆ ทั้งที่ใช้ `claude` อยู่ | เช็ก `tail ~/.claude/usage-widget.log` — ถ้าเจอ `refresh FAIL: … Refresh token expired` ซ้ำๆ แปลว่ามี credential เก่าค้าง: ลบ `~/.claude/.credentials.json` (Claude Code ใช้ keychain อยู่แล้ว) + `rm ~/.claude/usage-refresh-backoff` แล้วกด ↻ |
 | ไฟเหลือง "พัก 429" | ปกติ — script โดน rate limit เลยพักยิง ~15 นาทีแล้วกลับมาเอง ระหว่างนั้นโชว์ค่าเดิม |
+| การ์ดหายทุกจอหลังถอดจอ/อัปเดต macOS ทั้งที่ Übersicht รันอยู่ | เคยล็อกไว้กับจอที่ตอนนี้ไม่ได้ต่ออยู่ — เวอร์ชันปัจจุบันกันให้แล้ว (จอที่ล็อกไม่มี heartbeat เกิน 60 วิ → โชว์บนจอที่เหลือ) แค่รัน installer ซ้ำแล้ว **Quit + เปิด Übersicht ใหม่** |
 | โชว์ทุกจอ | กดปุ่ม **🖥️** ท้ายการ์ด แล้วเลือกจอที่ต้องการ |
 | คาปิบาร่าไม่ขึ้น | เช็กว่ามี `claude-usage-capy.png` ในโฟลเดอร์ widgets (รัน installer อีกครั้งจะ copy ให้) |
 | ป้าย plan ไม่ตรง | เพิ่ม mapping tier ที่ `PY_PLAN` ใน `claude-usage.sh` |
@@ -207,4 +224,11 @@ a key button to re-login/refresh the token when the session drops, built-in self
 (`capybeats.png`) is included — feel free to reuse it.
 
 Install: `bash install-claude-usage-widget.command` (handles Übersicht install + path rewrite).
+Native alternative (no Übersicht): `bash app/scripts/install-app.sh` builds `ClaudeUsageBar.app`
+(SwiftPM, Command Line Tools only) — menu-bar % + the same card at desktop level, launch-at-login,
+and a `>_` button that opens iTerm2/Terminal at `~/dev` (configurable via `defaults write … terminal.folder`).
+
+**Security:** the token never leaves your Mac except to `api.anthropic.com` / `platform.claude.com`;
+it is passed to `curl` via stdin (not argv), files the script writes are `umask 077`, and nothing
+is written to the repo. No telemetry.
 See [ความรู้เบื้องหลัง](#-ความรู้เบื้องหลัง-สำคัญ) for the reverse-engineering notes.

@@ -136,12 +136,25 @@ function resetAbsolute(iso) {
 // → วันไหนใช้เกิน/ต่ำกว่าเป้า โควตาต่อวันของวันถัดๆ ไปจะปรับลด/เพิ่มให้เองอัตโนมัติ
 const ANCHOR_KEY = "claudeUsageDailyAnchor2"; // v2: daysLeft เป็นเศษทศนิยม (เป๊ะตามชั่วโมง)
 function dayKeyLocal(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+// resets_at จาก API jitter เศษวินาที (เช่น ...:00.891471 vs ...:01.126168 ของรีเซ็ตเดียวกัน)
+// เทียบ ISO ดิบตรงๆ เลยเห็นเป็น "รอบใหม่" เกือบทุก poll → anchor รีเซ็ตทุก ~10 นาที เป้าวิ่งตามการใช้
+// ปัดลง key เป็นนาทีที่ใกล้ที่สุดแทน กันค่าที่คร่อมวินาที :59.xx/:00.xx ให้ตกคนละนาทีจริงๆ เท่านั้น
+function resetKey(iso) {
+  const t = new Date(iso).getTime();
+  return isNaN(t) ? null : String(Math.round(t / 60000));
+}
+// anchor เก่า (ก่อนแก้ bug นี้) เก็บ ISO ดิบไว้ใน a.reset → normalize ให้เทียบกับ key ใหม่ได้
+// (resetKey parse ไม่ออกแปลว่าเป็น key ที่ normalize แล้วอยู่แล้ว คืนค่าเดิมกลับไป) กัน anchor
+// วันนี้ที่มีอยู่แล้วโดน re-anchor ทิ้งฟรีๆ ตอน deploy รอบนี้
+function anchorResetKey(raw) { const k = resetKey(raw); return k != null ? k : raw; }
 function dailyBudget(id, pct, resetIso, fetchedIso) {
   if (!resetIso) return null;
   const now = new Date(), msLeft = new Date(resetIso).getTime() - now.getTime();
   if (!(msLeft > 0)) return null;
   const daysLeft = msLeft / 86400000; // เศษทศนิยม เช่น 4.18 วัน — เศษวันท้ายได้โควตาตามสัดส่วนชั่วโมงจริง
   // ต่ำกว่า 1 วัน (วันรีเซ็ต) → หารด้วยค่า <1 ทำให้เป้าพุ่งถึง 100 (ถูก cap) = ปลดล็อกโควตาที่เหลือทั้งหมด
+  const rKey = resetKey(resetIso);
+  if (rKey == null) return null;
   let store = {};
   try { store = JSON.parse(lsGet(ANCHOR_KEY)) || {}; } catch (e) {}
   const today = dayKeyLocal(now);
@@ -149,11 +162,11 @@ function dailyBudget(id, pct, resetIso, fetchedIso) {
   // anchor ใหม่เมื่อขึ้นวันใหม่/ขึ้นรอบสัปดาห์ใหม่ — เฉพาะจากข้อมูลที่ดึงมา "วันนี้" จริงๆ
   // (กัน cache ค้างจากเมื่อวานมาตั้ง anchor ต่ำเกินตอนเพิ่งตื่นเครื่อง)
   const fetchedToday = fetchedIso && dayKeyLocal(new Date(fetchedIso)) === today;
-  if ((!a || a.day !== today || a.reset !== resetIso) && fetchedToday) {
-    a = { day: today, pct: pct, days: daysLeft, reset: resetIso };
+  if ((!a || a.day !== today || anchorResetKey(a.reset) !== rKey) && fetchedToday) {
+    a = { day: today, pct: pct, days: daysLeft, reset: rKey };
     store[id] = a; lsSet(ANCHOR_KEY, JSON.stringify(store));
   }
-  if (!a || a.reset !== resetIso) return null;
+  if (!a || anchorResetKey(a.reset) !== rKey) return null;
   const target = Math.min(100, a.pct + (100 - a.pct) / a.days);
   return { target: target, left: target - pct, days: daysLeft };
 }
@@ -245,6 +258,14 @@ function registerThisScreen() {
   for (const k in reg) { if (now - (reg[k].ts || 0) > 600000) delete reg[k]; } // ตัดจอที่หายเกิน 10 นาที
   lsSet(SCREENS_KEY, JSON.stringify(reg));
 }
+// จอนี้ยังมี widget instance เต้นอยู่ไหม (heartbeat ทุก ~15 วิ จากลูป sync ด้านล่าง)
+const SCREEN_ALIVE_MS = 60000;
+function screenAlive(sig) {
+  try {
+    const reg = JSON.parse(lsGet(SCREENS_KEY)) || {};
+    return !!reg[sig] && Date.now() - (reg[sig].ts || 0) < SCREEN_ALIVE_MS;
+  } catch (e) { return false; }
+}
 function listScreens() {
   try {
     const reg = JSON.parse(lsGet(SCREENS_KEY)) || {};
@@ -264,7 +285,9 @@ function applyScreenVisibility() {
   const el = root.firstElementChild; // .cu-card หรือ .cu-pill
   if (!el) return;
   const chosen = chosenScreen(), sig = thisScreenSig();
-  const wantHidden = !!chosen && chosen !== sig;
+  // จอที่ล็อกไว้ต้อง "ยังต่ออยู่จริง" ถึงจะซ่อนจออื่น — ไม่งั้นถอดจอนั้น (หรือ OS อัปเดตแล้วจอหาย)
+  // = widget ซ่อนตัวเองทุกจอ (บั๊กจริง 2026-09-17). ค่าที่ล็อกไว้ไม่ถูกลบ → เสียบจอกลับมาก็ย้ายไปเอง
+  const wantHidden = !!chosen && chosen !== sig && screenAlive(chosen);
   const isHidden = el.style.display === "none";
   if (wantHidden !== isHidden) el.style.display = wantHidden ? "none" : "";
 }
@@ -290,8 +313,12 @@ function finishPaint(root) {
   const el = root && root.firstElementChild;
   if (el) ensureOnScreen(el);
 }
-if (typeof window !== "undefined" && !window.__cuVisTimer) {
+// เคลียร์ timer เก่าทุกครั้งที่โมดูลถูกโหลดใหม่ — ไม่งั้น hot-reload จะเหลือ closure ของโค้ดรุ่นเก่ารันต่อ
+if (typeof window !== "undefined") {
+  if (window.__cuVisTimer) clearInterval(window.__cuVisTimer);
   window.__cuVisTimer = setInterval(function () {
+    const now = Date.now();
+    if (now - (window.__cuScreenBeat || 0) > 15000) { window.__cuScreenBeat = now; registerThisScreen(); } // heartbeat ให้ screenAlive()
     finishPaint(document.querySelector(".cu-root")); // sync ข้ามจอ + กันหลุดจอ (change-guarded ไม่แฟลช)
   }, 1500);
 }

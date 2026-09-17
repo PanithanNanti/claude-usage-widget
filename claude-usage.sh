@@ -41,6 +41,9 @@ NOW=$(date +%s)
 # UA สำคัญ: Cloudflare หน้า platform.claude.com บล็อก UA แนว bot ดิบๆ
 # (Python-urllib → 403 code 1010, curl default/browser → 429) — ชื่อ lib/แอปทั่วไปผ่านได้
 UA="claude-usage-widget/1.0"
+# ไฟล์ที่ script สร้าง (cache/log/backoff/temp) อ่านได้เฉพาะเจ้าของเครื่อง
+umask 077
+
 LOG_FILE="$HOME/.claude/usage-widget.log"
 log() {
   printf '%s %s\n' "$(date '+%F %T')" "$1" >> "$LOG_FILE" 2>/dev/null
@@ -294,8 +297,10 @@ if [ "$TOKEN_STATE" = "expired" ] && [ "$REFRESH_OK" = "0" ]; then
 fi
 
 # ── 2) เรียก endpoint usage (เก็บ HTTP status ด้วย) ─────────────
-RAW=$(curl -s -m 15 -w $'\n%{http_code}' https://api.anthropic.com/api/oauth/usage \
-  -H "Authorization: Bearer $TOKEN" \
+# ส่ง Authorization ผ่าน stdin (-H @-) — ถ้าใส่ใน argv โปรเซสอื่นบนเครื่องจะเห็น token ผ่าน `ps`
+# (printf เป็น builtin ของ bash จึงไม่โผล่เป็นโปรเซสแยก)
+RAW=$(printf 'Authorization: Bearer %s\n' "$TOKEN" | curl -s -m 15 -w $'\n%{http_code}' https://api.anthropic.com/api/oauth/usage \
+  -H @- \
   -H "User-Agent: $UA" \
   -H "Content-Type: application/json")
 CODE="${RAW##*$'\n'}"     # บรรทัดสุดท้าย = http code
