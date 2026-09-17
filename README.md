@@ -1,93 +1,136 @@
-# Claude Usage — Desktop Widget (macOS / Übersicht)
+# Claude Usage — แอปดู Claude usage limits บน Mac
 
-การ์ดแสดง **plan usage limits ของ Claude** (session / weekly / per-model) เป็น widget บน
-desktop ของ Mac อัปเดตอัตโนมัติทุก ~10 นาที มีปุ่ม refresh ทันที, ล็อกเลือกจอ, ล็อกอิน/รีเฟรช
-token ในตัว — และมี **น้อง CapyBeats 🎧** คาปิบาร่า pixel-art นั่งโยกอยู่บนหัวการ์ด
+แอป macOS แสดง **plan usage limits ของ Claude** (session / weekly / per-model) เป็นตัวเลข % บน**เมนูบาร์**
+และ**การ์ดลอยบน desktop** อัปเดตเองทุก 10 นาที บอกด้วยว่า**วันนี้ควรใช้ถึงประมาณเท่าไหร่** —
+มีน้อง **CapyBeats 🎧** คาปิบาร่า pixel-art นั่งโยกอยู่บนหัวการ์ด
 
-> ทำงานได้เพราะดึงผ่าน **OAuth endpoint ของ Claude Code** (`/api/oauth/usage`) โดยตรง —
-> ไม่ผ่าน `claude.ai` ที่ติด Cloudflare จึงยิงจาก background script ได้ (ดู [ความรู้เบื้องหลัง](#-ความรู้เบื้องหลัง-สำคัญ))
+> ดึงข้อมูลผ่าน **OAuth endpoint ของ Claude Code** (`/api/oauth/usage`) ด้วย token ที่ Claude Code
+> เก็บไว้ใน Keychain อยู่แล้ว — ไม่ต้องใส่รหัส/คุกกี้เอง และไม่ติด Cloudflare แบบ `claude.ai`
+> (ดู [ความรู้เบื้องหลัง](#-ความรู้เบื้องหลัง))
 
 <p align="center">
-  <img src="snapshort/image.png" alt="Claude Usage widget — การ์ด glassy พร้อมน้อง CapyBeats นั่งโยกบนหัวการ์ด" width="420">
+  <img src="snapshort/app-card.png" alt="การ์ด Claude Usage บน desktop — bar session / weekly / Fable พร้อมเป้ารายวัน และน้อง CapyBeats บนหัวการ์ด" width="350">
 </p>
 
 ---
 
 ## ✨ ฟีเจอร์
 
-- 🟦 **Progress bar** ต่อ limit: session / weekly (ทุกโมเดล) / weekly per-model
-  (สีน้ำเงิน → เหลืองเมื่อ ≥80% → แดงเมื่อ ≥95%)
-- ⏱️ เวลา reset: session แสดง "รีเซ็ตใน Xh Ym", weekly แสดงวัน+เวลา (เวลาเครื่อง)
-- 🎯 **เป้าใช้งานรายวัน (daily pacing)** — weekly limit จะบอกด้วยว่า "วันนี้ควรหยุดที่ ~X%"
-  พร้อมเส้นขีดขาวบน bar: เอาโควตาที่**เหลือจริง**หารจำนวนวันที่เหลือถึงรีเซ็ต
-  (คิดเป็นเศษทศนิยมเป๊ะตามชั่วโมง เช่น 4.2 วัน — วันรีเซ็ตปลดล็อกที่เหลือทั้งหมด;
-  anchor ค่าตอนต้นวัน → เป้าคงที่ทั้งวัน) วันไหนใช้เกิน/ต่ำกว่าเป้า
-  โควตาต่อวันของวันถัดไปจะปรับลด/เพิ่มให้เองอัตโนมัติ
-  — bar per-model (เช่น **Fable**) ยัง**ถูกแคปด้วยโควตาที่ weekly รวมเหลือให้วันนี้**อีกชั้น
-  (ขึ้นข้อความ "จำกัดโดยโควตาสัปดาห์รวม") เพราะ Fable ดึงจาก weekly ก้อนเดียวกัน —
-  เดินตามเส้นตัวเองอย่างเดียวอาจไปชน weekly รวมก่อน = หยุดหมดทุกโมเดล
-- 🏷️ **ป้าย plan อัตโนมัติ** (Max 20× / Max 5× / Pro …) อ่านจาก credential ของแต่ละคน
-- 🎧 **CapyBeats** — คาปิบาร่า pixel-art 72 เฟรม โยกอยู่บนหัวการ์ด (CSS `steps()` ล้วน ไม่กิน CPU,
-  ปรับขนาดได้ที่ `CAPY_SCALE`)
-- 🛡️ **กัน rate limit (429) ในตัว script** — TTL cache 5 นาที (เรียกกี่ครั้งก็ยิง API จริงไม่เกิน
-  1 ครั้ง/TTL) และเจอ 429 จะพักยิง 15 นาทีเองอัตโนมัติ ระหว่างนั้นโชว์ค่าเดิม
-- 🖱️ **ลากย้ายได้** — จับที่แถบหัวการ์ด จำตำแหน่งไว้ (localStorage)
-- 🖥️ **รองรับหลายจอ** — ปุ่ม 🖥️ เปิด dropdown เลือกจอที่จะให้ widget อยู่
-- 🔄 **ปุ่ม ↻ รีเฟรช** — ดึงข้อมูลใหม่ทันที (`--force` ข้าม TTL cache แต่ไม่ฝ่า backoff 429)
-  และ**ไม่มีทางวาดทับข้อมูลดีด้วย error** — ถ้าผลลัพธ์เพี้ยนจะคงค่าเดิมไว้เสมอ
-- 🔑 **ปุ่มล็อกอิน/รีเฟรช token** — เปิด **iTerm2** (ไม่มีใช้ Terminal) รัน `claude` เมื่อ session หลุด
-- 💾 **Cache/stale** — ถ้า token หมดอายุ/เน็ตล่ม จะโชว์ค่าเดิม + ไฟเตือน แทนที่จะว่างเปล่า
-- ✕ **ย่อเป็น pill เล็ก** — คลิก ✕ ยุบเหลือวงกลม % session, คลิกซ้ำกางคืน
+- 📊 **ตัวเลขบนเมนูบาร์** — % ของ session ปัจจุบัน เปลี่ยนสีเหลือง ≥80% · แดง ≥95% · เหลืองเมื่อข้อมูลค้าง
+- 🟦 **การ์ดบน desktop** — bar ต่อ limit: session / weekly ทุกโมเดล / weekly per-model (เช่น Fable)
+  พร้อมเวลารีเซ็ต (session: "รีเซ็ตใน Xชม. Yนาที", weekly: วัน+เวลาตามเครื่อง)
+- 🎯 **เป้าใช้งานรายวัน (daily pacing)** — weekly limit บอกว่า "วันนี้ควรหยุดที่ ~X%" + เส้นขีดบน bar
+  - เอาโควตาที่**เหลือจริง**หารด้วยวันที่เหลือถึงรีเซ็ต (เศษทศนิยมตามชั่วโมง เช่น 3.9 วัน)
+  - จำค่าตอนต้นวันไว้ → เป้า**คงที่ทั้งวัน**; วันไหนใช้เกิน/ขาด วันถัดไปปรับโควตาให้เอง
+  - bar per-model (Fable) ถูก**แคปด้วยโควตาที่ weekly รวมเหลือ**อีกชั้น เพราะดึงจากก้อนเดียวกัน
+    (ขึ้น "จำกัดโดยโควตาสัปดาห์รวม")
+- `>_` **เปิด terminal ที่ `~/dev`** — iTerm2 (ไม่มีใช้ Terminal) · เปลี่ยนโฟลเดอร์ได้
+- 🔑 **ล็อกอินใหม่ในคลิกเดียว** — เมื่อ token ต่ออายุเองไม่ได้ ปุ่มนี้เปิด iTerm2 แล้วรัน `claude` ให้
+- 🔄 **ต่ออายุ token เอง** — script ใช้ refresh token ต่ออายุให้ก่อนหมด ไม่ต้องเปิด Claude Code ค้างไว้
+- 🛡️ **ไม่ยิง API ถี่** — cache 5 นาที + เจอ HTTP 429 พักเอง 15 นาที ระหว่างนั้นโชว์ค่าเดิม
+- 💾 **ข้อมูลค้างก็ยังเห็น** — เน็ตล่ม/token หลุด โชว์ค่าล่าสุด + แถบเตือนชัดเมื่อค้างนานเกิน ~1 ชม.
+  (ผลเพี้ยนไม่มีวันวาดทับข้อมูลที่ดี)
+- 🖱️ **ลากย้ายได้** จำตำแหน่งแยกต่อจอ · 🖥️ **เลือกจอ** (ถอดจอที่เลือกออก → ย้ายไปจอหลักเอง)
+  · ✕ **ย่อเป็นวงกลม** · **เปิดเองตอนเปิดเครื่อง**
+- 🪶 **เบา** — CPU ~0%, RAM ~60 MB, ไม่มี dependency ภายนอก
 
 ---
 
-## 📦 ความต้องการของระบบ
+## 📦 ความต้องการ
 
-- macOS (Apple Silicon หรือ Intel)
-- [Claude Code CLI](https://claude.com/claude-code) ติดตั้งและ **ล็อกอินอยู่** (widget อ่าน OAuth token ที่มันเก็บ)
-- [Übersicht](https://tracesof.net/uebersicht/) (installer ติดตั้งให้ผ่าน Homebrew ได้)
-- `python3` (มากับ macOS)
+- macOS 14 ขึ้นไป (Apple Silicon หรือ Intel)
+- **Command Line Tools** — `xcode-select --install` (ใช้ build แอป + ได้ `python3` ที่ script ใช้) ไม่ต้องมี Xcode
+- [Claude Code](https://claude.com/claude-code) ติดตั้งและ **ล็อกอินแล้ว** (รัน `claude` สักครั้ง)
+- (แนะนำ) [iTerm2](https://iterm2.com) — ถ้าไม่มี ปุ่มต่างๆ จะใช้ Terminal แทน
 
 ---
 
-## 🚀 ติดตั้ง (เครื่องใหม่ / เพื่อนร่วมทีม)
+## 🚀 ติดตั้ง
 
 ```bash
-git clone <repo-url> claude-usage-widget
+mkdir -p ~/dev && cd ~/dev
+git clone https://github.com/PanithanNanti/claude-usage-widget.git
 cd claude-usage-widget
-bash install-claude-usage-widget.command      # หรือดับเบิลคลิกไฟล์นี้ใน Finder
+bash app/scripts/install-app.sh
 ```
 
-installer จะ:
-1. เช็ก/ติดตั้ง Übersicht (ผ่าน `brew install --cask ubersicht`)
-2. copy `claude-usage.jsx` ไปโฟลเดอร์ widgets ของ Übersicht **พร้อมแก้ path สคริปต์ให้ตรงเครื่องอัตโนมัติ**
-   และ copy `capybeats.png` (spritesheet คาปิบาร่า) ไปเป็น `claude-usage-capy.png`
-3. ดึง usage ครั้งแรก (วอร์ม cache)
-4. เปิด + รีเฟรช Übersicht
+สคริปต์จะ build แล้ววางแอปที่ `~/Applications/ClaudeUsageBar.app` และเปิดให้ทันที —
+ตัวเลข % ขึ้นบนเมนูบาร์ การ์ดขึ้นบน desktop
 
-การ์ดจะขึ้นมุมขวาบนของ desktop ภายในไม่กี่วินาที
+**หลังติดตั้ง (ครั้งเดียว):**
+1. คลิกตัวเลขบนเมนูบาร์ → **เปิดแอปตอนล็อกอินเข้าเครื่อง**
+2. ครั้งแรกที่กด 🔑 macOS จะถามว่าให้ "Claude Usage" ควบคุม iTerm/Terminal ไหม → **Allow**
 
-> ครั้งแรกกับหลายจอ: การ์ดจะขึ้นทุกจอ — กดปุ่ม **🖥️** ท้ายการ์ดแล้วเลือกจอที่ต้องการ
-> จออื่นจะซ่อนเอง (เลือก "แสดงทุกจอ" เพื่อกลับมาโชว์ทุกจอ)
+> ต้อง build บนเครื่องที่จะใช้ — แอปเซ็นแบบ ad-hoc ถ้า copy `.app` ข้ามเครื่องจะโดน Gatekeeper บล็อก
+> ใช้หลายเครื่องพร้อมกันได้ (โควตาเป็นของบัญชี ทุกเครื่องเห็นเลขเดียวกัน) ค่าที่ตั้งไว้เก็บแยกต่อเครื่อง
+
+### อัปเดต
+```bash
+cd ~/dev/claude-usage-widget && git pull && bash app/scripts/install-app.sh
+```
 
 ### ถอนการติดตั้ง
 ```bash
-bash uninstall-claude-usage-widget.command
+bash app/scripts/uninstall-app.sh
 ```
+ถ้าเคยเปิด "เปิดแอปตอนล็อกอิน" ไว้ ให้ลบรายการที่ System Settings → General → Login Items ด้วย
+(สคริปต์ไม่แตะ `~/.claude` หรือ credential ใดๆ)
 
-### 🆕 ทางเลือก: แอป native `ClaudeUsageBar` (ไม่ต้องใช้ Übersicht)
-แอป macOS (SwiftPM) — ตัวเลข % บนเมนูบาร์ + การ์ดแบบเดียวกันลอยระดับ desktop, ใช้ `claude-usage.sh` ตัวเดิม
-(bundle อยู่ในแอป) ต้องมี Command Line Tools (`xcode-select --install`) ไม่ต้องมี Xcode
+---
 
+## 🕹️ ใช้งาน
+
+**ปุ่มท้ายการ์ด**
+
+| ปุ่ม | ทำอะไร |
+|------|--------|
+| `>_` | เปิด iTerm2/Terminal ที่ `~/dev` |
+| ↻ รีเฟรช | ดึงข้อมูลใหม่ทันที (ข้าม cache แต่ไม่ฝ่าช่วงพัก 429) |
+| 🖥️ | เลือกจอที่จะให้การ์ดอยู่ |
+| 🔑 | ขึ้นเฉพาะตอนต้องล็อกอินใหม่ — เปิด iTerm2 รัน `claude` แล้วกด ↻ |
+| ✕ (หัวการ์ด) | ย่อเป็นวงกลม % — คลิกวงกลมเพื่อกางคืน |
+
+**เมนูบนเมนูบาร์:** รีเฟรช (⌘R) · ซ่อน/แสดงการ์ด (⌘D) · ย่อ/กางการ์ด (⌘E) · เลือกจอ ·
+เปิดแอปตอนล็อกอิน · เปิด terminal (⌘T) · ล็อกอิน Claude · เปิด log ของสคริปต์ · ออก (⌘Q)
+
+**ลากย้ายการ์ด:** จับที่หัวการ์ดแล้วลาก ตำแหน่งจำแยกต่อจอ
+
+### ปรับแต่ง
 ```bash
-bash app/scripts/install-app.sh       # build → ~/Applications/ClaudeUsageBar.app แล้วเปิด
-bash app/scripts/uninstall-app.sh     # ถอน
+# เปลี่ยนโฟลเดอร์ของปุ่ม >_ (ไม่มีโฟลเดอร์นั้น → เปิดที่ home)
+defaults write io.github.panithannanti.ClaudeUsageBar terminal.folder "~/Projects"
 ```
-ให้เปิดเองตอนเปิดเครื่อง: คลิกตัวเลขบนเมนูบาร์ → **เปิดแอปตอนล็อกอินเข้าเครื่อง**
-ปุ่ม **`>_`** ท้ายการ์ด (หรือเมนู → เปิด terminal, ⌘T) เปิด iTerm2 (ไม่มีใช้ Terminal.app) ที่ `~/dev` —
-เปลี่ยนโฟลเดอร์ได้ด้วย `defaults write io.github.panithannanti.ClaudeUsageBar terminal.folder "~/Projects"`
-(ไม่มีโฟลเดอร์นั้น → เปิดที่ home)
-· เทสต์ logic: `cd app && swift run UsageCoreChecks` · รายละเอียด/สเปก: [`app/PLAN.md`](app/PLAN.md)
+- **TTL cache / ช่วงพัก 429:** env `CU_TTL` / `CU_BACKOFF` (วินาที) ของ `claude-usage.sh`
+- **ป้าย plan:** ตรวจจาก credential อัตโนมัติ — เพิ่ม mapping ได้ที่ `PY_PLAN` ใน `claude-usage.sh`
+
+---
+
+## 🔒 ความปลอดภัย & ความเป็นส่วนตัว
+
+- token **ไม่ออกจากเครื่อง** ยกเว้นไปที่ `api.anthropic.com` (ดู usage) และ `platform.claude.com` (ต่ออายุ token)
+  — ไม่มี telemetry ไม่มี server อื่น
+- ไม่เก็บ token ไว้เอง: อ่านจาก Keychain ของ Claude Code ทุกครั้ง, เขียนกลับ**เฉพาะตอนต่ออายุสำเร็จ**
+- ส่ง token ให้ `curl` ทาง stdin (ไม่อยู่ใน command line ที่โปรเซสอื่นเห็นผ่าน `ps`)
+- ไฟล์ที่ script สร้าง (`~/.claude/usage-cache.json`, `usage-widget.log`, backoff) เป็นสิทธิ์ `600`
+- ข้อความ error บนการ์ด**ถูกกลบข้อมูลลับ** (เช่น `Bearer …`) ก่อนแสดง
+- ปุ่ม terminal ไม่ประกอบคำสั่ง shell จาก path / AppleScript เป็นข้อความคงที่ → ไม่มีช่อง injection
+- ข้อจำกัดที่รู้: ตอน script ต่ออายุ token เอง `security add-generic-password` รับ credential ทาง
+  command line ชั่วขณะ (คำสั่งนี้ไม่มีทางรับจาก stdin) — เกิดเฉพาะตอน token หมดระหว่างไม่ได้เปิด Claude Code
+
+---
+
+## ❓ แก้ปัญหา
+
+| อาการ | วิธีแก้ |
+|-------|---------|
+| ไม่มีตัวเลขบนเมนูบาร์ | เปิด `~/Applications/ClaudeUsageBar.app` เอง / เมนูบาร์เต็มจนไอคอนถูกซ่อน (ลองปิดไอคอนอื่น) |
+| ไม่เห็นการ์ด | เมนู → **แสดงการ์ดบน desktop** · การ์ดอยู่ระดับ desktop จะอยู่**ใต้**หน้าต่างแอปอื่นเสมอ · widget ของ macOS อาจทับได้ |
+| ไฟเหลือง/แดง "token หมดอายุ" | กด 🔑 (หรือพิมพ์ `claude` ใน terminal) แล้วกด ↻ |
+| เลขค้างค่าเดิมเป็นวันๆ ทั้งที่ใช้ `claude` อยู่ | `tail ~/.claude/usage-widget.log` — เจอ `refresh FAIL: … Refresh token expired` ซ้ำๆ = มีไฟล์ credential เก่าค้าง: ลบ `~/.claude/.credentials.json` (Claude Code ใช้ Keychain อยู่แล้ว) + `rm ~/.claude/usage-refresh-backoff` แล้วกด ↻ |
+| ไฟเหลือง "พัก 429" | ปกติ — พักยิง ~15 นาทีแล้วกลับมาเอง ระหว่างนั้นโชว์ค่าเดิม |
+| กด 🔑 แล้วไม่มีอะไรเกิดขึ้น | System Settings → Privacy & Security → **Automation** → เปิดให้ Claude Usage ควบคุม iTerm/Terminal |
+| build ไม่ผ่าน | `xcode-select --install` แล้วลองใหม่ · ดูรายละเอียดใน output ของ `install-app.sh` |
+| ป้าย plan ไม่ตรง | เพิ่ม mapping tier ที่ `PY_PLAN` ใน `claude-usage.sh` |
 
 ---
 
@@ -95,26 +138,24 @@ bash app/scripts/uninstall-app.sh     # ถอน
 
 | ไฟล์ | หน้าที่ |
 |------|---------|
-| `claude-usage.sh` | ดึง usage ผ่าน OAuth token — โหมด `--json` (ให้ widget ใช้) และโหมด pretty (ดีบั๊กใน terminal) พร้อม TTL cache + 429 backoff ในตัว |
-| `claude-usage.jsx` | Übersicht widget (แบบ A การ์ดเต็ม) — เรนเดอร์จาก `limits[]`, ลาก/ล็อกจอ/refresh/login + CapyBeats |
-| `capybeats.png` | spritesheet คาปิบาร่า 72 เฟรม (8×9, เฟรมละ 192×208) — เอาไปใช้ต่อในโปรเจกต์อื่นได้เลย |
-| `install-claude-usage-widget.command` | ตัวติดตั้ง (idempotent — รันซ้ำเพื่ออัปเดต widget ได้) |
-| `uninstall-claude-usage-widget.command` | ตัวถอน |
-| `app/` | แอป native `ClaudeUsageBar` (SwiftPM) — ทางเลือกแทน Übersicht |
-| `claude_limit.png` | ไอคอนแอป (build-app.sh แปลงเป็น `AppIcon.icns`) |
-| `CLAUDE.md` | บันทึกการทำงาน/ความรู้แบบละเอียด (ภาษาไทย) |
-| `snapshort/image.png` | ภาพตัวอย่าง widget บน desktop จริง |
+| `app/` | แอป `ClaudeUsageBar` (SwiftPM) — `UsageCore` (logic ล้วน), `ClaudeUsageBar` (UI), `UsageCoreChecks` (เทสต์), `scripts/` (build/install/uninstall) |
+| `app/PLAN.md` | สเปก + บทเรียนตอนพัฒนาแอป |
+| `claude-usage.sh` | ตัวดึง usage (อ่าน token, ต่ออายุ, cache, กัน 429, log) — แอป bundle สคริปต์นี้ไว้ข้างใน |
+| `capybeats.png` | spritesheet คาปิบาร่า 72 เฟรม (8×9, เฟรมละ 192×208) — เอาไปใช้ต่อได้เลย |
+| `claude_limit.png` | ไอคอนแอป (`build-app.sh` แปลงเป็น `AppIcon.icns`) |
+| `claude-usage.jsx` · `*-claude-usage-widget.command` | widget Übersicht รุ่นแรก (ดูหัวข้อ "รุ่นเก่า" ด้านล่าง) |
+| `CLAUDE.md` | บันทึกการทำงาน/บทเรียนแบบละเอียด (ภาษาไทย) |
+| `snapshort/app-card.png` | ภาพการ์ดของแอป |
 
-รันสคริปต์ตรงๆ เพื่อทดสอบ:
 ```bash
-bash claude-usage.sh                  # แสดงผลอ่านง่ายใน terminal
-bash claude-usage.sh --json           # JSON ดิบ (แบบที่ widget ใช้ — ผ่าน TTL cache)
-bash claude-usage.sh --json --force   # บังคับยิง API ใหม่ (ข้าม TTL, ไม่ฝ่า backoff 429)
+cd app && swift run UsageCoreChecks          # เทสต์ logic (parser / pacing / fetcher)
+bash claude-usage.sh                          # ดูผลแบบอ่านง่ายใน terminal
+bash claude-usage.sh --json --force           # JSON ดิบ ยิง API ใหม่ (ไม่ฝ่าช่วงพัก 429)
 ```
 
 ---
 
-## 🔍 ความรู้เบื้องหลัง (สำคัญ)
+## 🔍 ความรู้เบื้องหลัง
 
 ### ใช้ OAuth endpoint ของ Claude Code — ไม่ใช่ claude.ai
 ```
@@ -123,112 +164,78 @@ Authorization: Bearer <ACCESS_TOKEN>
 ```
 - endpoint นี้คือตัวที่คำสั่ง `/usage` ใน Claude Code ใช้ → **ไม่ติด Cloudflare** ยิงจากสคริปต์ได้
 - ตรงข้ามกับ `https://claude.ai/api/.../usage` (cookie `sessionKey`) ที่ยิงนอกเบราว์เซอร์แล้วโดน
-  Cloudflare เด้ง (403 / "Just a moment...") — **ทางตัน** สำหรับ background script
+  Cloudflare เด้ง (403 / "Just a moment...")
 
 ### token เก็บที่ไหน (macOS)
-Claude Code เก็บ OAuth credential ไว้ที่ **Keychain**:
-- service: `Claude Code-credentials`  ·  account: `$USER`
-- โครงสร้าง (ห่อด้วย `claudeAiOauth`):
+- **Keychain** service `Claude Code-credentials` · account `$USER` — ห่อด้วย `claudeAiOauth`:
   ```json
   { "claudeAiOauth": { "accessToken": "sk-ant-oat01-…", "refreshToken": "…",
     "expiresAt": 0, "subscriptionType": "max", "rateLimitTier": "default_claude_max_20x" } }
   ```
-- อ่านด้วย: `security find-generic-password -a "$USER" -w -s "Claude Code-credentials"`
-- `/usr/bin/security` อ่านได้โดย **ไม่มี GUI prompt** แม้ถูกเรียกจาก Übersicht (ทดสอบด้วย `launchctl asuser`)
-- บาง setup เก็บเป็นไฟล์ `~/.claude/.credentials.json` แทน — สคริปต์อ่าน**ทั้งสองแหล่ง**แล้วเลือก
-  **อันที่ `expiresAt` ใหม่ที่สุด** (ไม่ใช่ "เจอที่ไหนก่อนใช้อันนั้น"): ถ้าไฟล์เก่าค้างอยู่จากการล็อกอิน
-  ครั้งก่อน มันจะบัง keychain ที่ Claude Code หมุนให้สดตลอด → refresh เจอ `invalid_grant` ทุกรอบ
-  แล้ว widget ค้างที่ค่าเดิมเป็นวันๆ (เคสจริง 2026-08-17)
-- **แกะ token ด้วย `python3` (parse JSON)** ไม่ใช่ `sed` — blob เป็นบรรทัดเดียวยาว sed พลาดง่าย
+- บาง setup เป็นไฟล์ `~/.claude/.credentials.json` — script อ่าน**ทุกแหล่ง**แล้วเลือกอันที่ `expiresAt`
+  ใหม่สุด (ไฟล์เก่าค้างเคยบัง Keychain ที่สดกว่า จนเลขค้าง 4 วัน)
+- แกะ JSON ด้วย `python3` ไม่ใช่ `sed`
 
-### โครงสร้าง response (`/api/oauth/usage`)
+### โครงสร้าง response
 ```
-five_hour.utilization / .resets_at     ← session (0-100 %)
-seven_day.utilization / .resets_at     ← weekly ทุกโมเดล
 limits[]  { kind: session|weekly_all|weekly_scoped, percent, severity,
-            resets_at, scope.model.display_name }   ← มี label สวย + per-model
+            resets_at, scope.model.display_name }     ← ใช้อันนี้เป็นหลัก
+five_hour / seven_day { utilization, resets_at }      ← fallback
 ```
-> oauth endpoint **ก็มี `limits[]`** (ไม่ใช่แค่ฝั่ง claude.ai) — widget เรนเดอร์จากตรงนี้เป็นหลัก
+`resets_at` ขยับเศษวินาทีทุกครั้งที่ดึง → เทียบรอบรีเซ็ตโดยปัดเป็นนาที (ไม่งั้นเป้ารายวันรีเซ็ตทุก poll)
 
 ### กฎ Fable 50% กับ daily pacing
-`percent` ของ bar `weekly_scoped` (Fable) คิดเทียบ **แคป 50% ของตัวมันเอง** ไม่ใช่ weekly ทั้งก้อน
-→ **Fable bar 100% = กิน weekly รวมไป 50 จุด** (1 จุดบน weekly_all = 2% บน bar Fable)
-- Fable ไม่ใช่โควตาแถม — ใช้ทีเดียวขึ้น 2 bar พร้อมกัน (weekly_all + weekly_scoped)
-- pacing จึงคิด 2 ชั้น: เป้าของ Fable เอง (`anchor + (100−anchor)/daysLeft`) แล้ว
-  **แคปด้วย `fablePct + 2 × (เป้า weekly_all − weekly_all ปัจจุบัน)`** (`capScopedBudget()` ใน jsx)
-- ตัวไหนตึงกว่าชนะ: ใช้ Fable ล้วน → เส้น Fable ตึงกว่า; ใช้โมเดลอื่นหนัก → weekly รวมตึงกว่า
-  แล้ว Fable จะถูกดึงลงมาตาม (ถ้า weekly รวมเกินเป้าวันนี้แล้ว เป้า Fable จะเป็น 0 = วันนี้ไม่ควรใช้เพิ่ม)
+`percent` ของ bar Fable คิดเทียบ **แคป 50% ของตัวมันเอง** → Fable 100% = กิน weekly รวมไป 50 จุด
+- เป้า Fable = `min(เป้าของตัวเอง, fablePct + 2 × (เป้า weekly_all − weekly_all ปัจจุบัน))` — ตัวไหนตึงกว่าชนะ
+- เห็น Fable เต็มทั้งที่ weekly รวมยังเหลือ = ถูกต้องตามกฎ ไม่ใช่ bug
 
-### token refresh / session หลุด
-- accessToken หมดอายุทุก ~1 ชม. (`expiresAt`), refreshToken อายุ ~28 วัน
-- **auto-refresh (built-in):** ถ้า accessToken เหลือ <15 นาที สคริปต์จะขอ token ใหม่เองด้วย refreshToken
-  แล้วเขียนกลับ Keychain — เพราะ widget รันทุก 10 นาที จึง**เลี้ยง token ให้สดได้เองยาวๆ** โดยไม่ต้องเปิด claude
+### ต่ออายุ token
+- accessToken อายุ ~8 ชม. → script ต่ออายุเองเมื่อเหลือ <15 นาที (ถ้าไม่มี `claude` รันอยู่ ให้ Claude Code ต่อเอง กันแย่งกัน)
   ```
   POST https://platform.claude.com/v1/oauth/token
   { "grant_type":"refresh_token", "refresh_token":"…",
-    "client_id":"9d1c250a-e61b-44d9-88ed-5944d1962f5e" }   # client_id ของ Claude Code
+    "client_id":"9d1c250a-e61b-44d9-88ed-5944d1962f5e" }   # client_id สาธารณะของ Claude Code
   ```
-  เขียน Keychain **เฉพาะตอน refresh สำเร็จ** (ล้มเหลว → credential เดิมไม่ถูกแตะ, fallback เป็น stale)
-- ถ้า refreshToken หมดอายุจริง (นานเป็นเดือนไม่ได้ใช้) → widget โชว์ 🔑 ให้เปิด `claude` ล็อกอินใหม่
-- แยก HTTP status: `429` = rate limit (ชั่วคราว, ไม่ใช่ token หมด) · `401/403` = auth
-
-### กัน 429 ที่ตัว script (self rate-limit)
-endpoint นี้โดน 429 ได้ถ้ายิงถี่ (Übersicht reload widgets, ตื่นจาก sleep, กดรีเฟรชรัวๆ) —
-script เลย cap ตัวเอง:
-- **TTL cache** (`CU_TTL`, default 300s): cache สดกว่านี้ → ตอบจาก `~/.claude/usage-cache.json`
-  ทันทีโดยไม่แตะ API → ต่อให้ถูกเรียกกี่ครั้งก็ยิงจริงไม่เกิน 1 ครั้ง/TTL
-- **Backoff** (`CU_BACKOFF`, default 900s): เจอ 429 เมื่อไหร่ บันทึกเวลาไว้ที่ `~/.claude/usage-backoff`
-  แล้วหยุดยิงจนพ้นช่วงพัก (แม้ใช้ `--force`) ระหว่างนั้นตอบค่าเดิมเป็น stale — ยิงสำเร็จครั้งถัดไปล้างเอง
+- endpoint นี้บล็อกตาม User-Agent (`Python-urllib` → 403) → script ส่ง UA ของตัวเอง
+- ต่ออายุไม่ได้ → พัก 1 ชม. และ**ไม่ยิง usage ด้วย token ที่ตายแล้ว** (ยิงซ้ำจะโดน 429 ทั้งคืน)
 
 ---
 
-## 🛠️ ปรับแต่ง
+## 🗄️ รุ่นเก่า: widget Übersicht
 
-- **ตำแหน่ง/ขนาดเริ่มต้น**: แก้ `.cu-card { top / right / width }` ใน `claude-usage.jsx`
-  (หรือแค่ลากการ์ดเอา แล้วมันจำตำแหน่งให้)
-- **ความถี่รีเฟรช**: `refreshFrequency` (มิลลิวินาที) ใน `claude-usage.jsx`
-- **ขนาดคาปิบาร่า**: `CAPY_SCALE` ใน `claude-usage.jsx` (0.5 = เล็ก, 0.75 = default, 1 = เท่าต้นฉบับ)
-  ความเร็วโยกอยู่ที่ `animation: cuCapX 0.8s … cuCapY 7.2s` (คงอัตราส่วน 1:9 ไว้)
-- **TTL / backoff**: env `CU_TTL`, `CU_BACKOFF` (วินาที) ตอนเรียก `claude-usage.sh`
-- **สี threshold**: ฟังก์ชัน `barColor()` ใน `claude-usage.jsx`
-- **ป้าย plan**: ตรวจอัตโนมัติจาก credential — เพิ่ม mapping ได้ที่ `PY_PLAN` ใน `claude-usage.sh`
+<details>
+<summary>ยังใช้ได้ — การ์ดแบบเดียวกันเป็น widget ของ <a href="https://tracesof.net/uebersicht/">Übersicht</a> (ไม่ต้อง build)</summary>
 
----
+```bash
+bash install-claude-usage-widget.command     # ติดตั้ง Übersicht (brew) + copy widget + แก้ path ให้เอง
+bash uninstall-claude-usage-widget.command   # ถอน
+```
+- ไม่มีตัวเลขบนเมนูบาร์ / ปุ่ม `>_` · ใช้ `claude-usage.sh` ตัวเดียวกัน
+- การ์ดไม่ขึ้น → ไอคอน Übersicht บนเมนูบาร์ → **Refresh All Widgets** / เปิด **Show widgets on desktop**
+- หลังอัปเดต jsx ให้ **Quit + เปิด Übersicht ใหม่** 1 ครั้ง (กัน timer ของโค้ดรุ่นเก่าค้าง)
+- ปรับแต่งใน `claude-usage.jsx`: `refreshFrequency`, `CAPY_SCALE`, `barColor()`, `.cu-card { top/right/width }`
+- **อย่าใช้พร้อมแอป** — จะมีการ์ด 2 ใบ
 
-## ❓ แก้ปัญหา
-
-| อาการ | วิธีแก้ |
-|-------|---------|
-| การ์ดไม่ขึ้นเลย | คลิกไอคอน Übersicht บนเมนูบาร์ → **Refresh All Widgets** / เปิด **Show widgets on desktop** |
-| ไม่มีไอคอน Übersicht บนเมนูบาร์ | เปิดแอป Übersicht จาก Launchpad (หรือ `brew install --cask ubersicht` ใหม่) แล้วรัน installer อีกครั้ง |
-| การ์ดโชว์ไฟเหลือง/แดง "token หมดอายุ" | กดปุ่ม 🔑 บนการ์ด (หรือเปิด Terminal พิมพ์ `claude` เอง) แล้วกด ↻ รีเฟรช |
-| เลข/เวลาค้างอยู่ค่าเดิมเป็นวันๆ ทั้งที่ใช้ `claude` อยู่ | เช็ก `tail ~/.claude/usage-widget.log` — ถ้าเจอ `refresh FAIL: … Refresh token expired` ซ้ำๆ แปลว่ามี credential เก่าค้าง: ลบ `~/.claude/.credentials.json` (Claude Code ใช้ keychain อยู่แล้ว) + `rm ~/.claude/usage-refresh-backoff` แล้วกด ↻ |
-| ไฟเหลือง "พัก 429" | ปกติ — script โดน rate limit เลยพักยิง ~15 นาทีแล้วกลับมาเอง ระหว่างนั้นโชว์ค่าเดิม |
-| การ์ดหายทุกจอหลังถอดจอ/อัปเดต macOS ทั้งที่ Übersicht รันอยู่ | เคยล็อกไว้กับจอที่ตอนนี้ไม่ได้ต่ออยู่ — เวอร์ชันปัจจุบันกันให้แล้ว (จอที่ล็อกไม่มี heartbeat เกิน 60 วิ → โชว์บนจอที่เหลือ) แค่รัน installer ซ้ำแล้ว **Quit + เปิด Übersicht ใหม่** |
-| โชว์ทุกจอ | กดปุ่ม **🖥️** ท้ายการ์ด แล้วเลือกจอที่ต้องการ |
-| คาปิบาร่าไม่ขึ้น | เช็กว่ามี `claude-usage-capy.png` ในโฟลเดอร์ widgets (รัน installer อีกครั้งจะ copy ให้) |
-| ป้าย plan ไม่ตรง | เพิ่ม mapping tier ที่ `PY_PLAN` ใน `claude-usage.sh` |
+</details>
 
 ---
 
 ## English (short)
 
-Desktop widget for macOS ([Übersicht](https://tracesof.net/uebersicht/)) showing **Claude plan
-usage limits**. It reads Claude Code's OAuth token from the macOS Keychain
-(`security … -s "Claude Code-credentials"`) and calls
-`GET https://api.anthropic.com/api/oauth/usage` — the same endpoint `/usage` uses, which is **not
-behind Cloudflare** (unlike `claude.ai`). Features: draggable, per-monitor lock, refresh-now,
-a key button to re-login/refresh the token when the session drops, built-in self rate-limiting
-(5-min TTL cache + 15-min backoff after HTTP 429), and **CapyBeats** — a pixel-art capybara
-(72-frame spritesheet, pure CSS `steps()` animation) grooving on top of the card. The spritesheet
-(`capybeats.png`) is included — feel free to reuse it.
+A native macOS menu-bar app (+ desktop card) showing **Claude plan usage limits** — session, weekly,
+and per-model (e.g. Fable) — with **daily pacing** ("stop around X% today") so you spread the weekly
+quota evenly. It reads Claude Code's OAuth token from the Keychain and calls
+`GET https://api.anthropic.com/api/oauth/usage` (the endpoint behind `/usage`, not behind Cloudflare).
+Auto-refreshes the token, self rate-limits (5-min cache, 15-min backoff on 429), shows stale data
+instead of blanks, and has a `>_` button that opens iTerm2/Terminal at `~/dev`. Plus **CapyBeats**,
+a pixel-art capybara grooving on the card.
 
-Install: `bash install-claude-usage-widget.command` (handles Übersicht install + path rewrite).
-Native alternative (no Übersicht): `bash app/scripts/install-app.sh` builds `ClaudeUsageBar.app`
-(SwiftPM, Command Line Tools only) — menu-bar % + the same card at desktop level, launch-at-login,
-and a `>_` button that opens iTerm2/Terminal at `~/dev` (configurable via `defaults write … terminal.folder`).
+```bash
+xcode-select --install    # once
+git clone https://github.com/PanithanNanti/claude-usage-widget.git
+cd claude-usage-widget && bash app/scripts/install-app.sh
+```
 
-**Security:** the token never leaves your Mac except to `api.anthropic.com` / `platform.claude.com`;
-it is passed to `curl` via stdin (not argv), files the script writes are `umask 077`, and nothing
-is written to the repo. No telemetry.
-See [ความรู้เบื้องหลัง](#-ความรู้เบื้องหลัง-สำคัญ) for the reverse-engineering notes.
+**Security:** the token only goes to `api.anthropic.com` / `platform.claude.com`, is passed to `curl`
+via stdin (not argv), script files are mode 600, errors are redacted on screen. No telemetry.
+The original Übersicht widget is still included (`install-claude-usage-widget.command`).
