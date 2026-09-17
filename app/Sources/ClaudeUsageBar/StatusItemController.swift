@@ -106,7 +106,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         add(menu, "เปิด terminal ที่ \((SystemActions.terminalFolder.path as NSString).abbreviatingWithTildeInPath)", #selector(openTerminal), key: "t")
-        add(menu, "🔑 ล็อกอิน Claude (เปิด Terminal)", #selector(openLogin))
+        add(menu, "🔑 ล็อกอิน Claude (เปิด \(SystemActions.terminalName))", #selector(openLogin))
         add(menu, "เปิด log ของสคริปต์", #selector(openLog))
 
         menu.addItem(.separator())

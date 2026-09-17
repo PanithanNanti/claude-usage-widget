@@ -216,6 +216,9 @@ Anthropic รวม **Claude Fable 5** เข้าแผน Max/Team Premium �
 - ปุ่ม **`>_`** ท้ายการ์ด + เมนู "เปิด terminal ที่ ~/dev" (⌘T): เปิด iTerm2 (ไม่มีใช้ Terminal.app) ที่ `~/dev`
   ด้วย `NSWorkspace.open([folder], withApplicationAt:)` — **ไม่ประกอบ shell/AppleScript จาก path** (กัน injection);
   เปลี่ยนโฟลเดอร์: `defaults write io.github.panithannanti.ClaudeUsageBar terminal.folder "~/อื่น"`; โฟลเดอร์ไม่มี → home
+- ปุ่ม 🔑 ล็อกอิน (แอป + jsx) เปิด **iTerm2** แล้ว `write text "claude"` (ผ่าน shell ผู้ใช้ → PATH ครบ; ไม่ใช้ `command`
+  ที่ไม่ผ่าน login shell) ไม่มี iTerm → Terminal `do script`. iTerm ยังไม่รัน → ใช้หน้าต่างที่มันสร้างเองตอนเปิด
+  (กันได้ 2 หน้าต่าง). AppleScript เป็นข้อความคงที่ทั้งก้อน. เพิ่ม `NSAppleEventsUsageDescription` ใน Info.plist
 - security ของ `claude-usage.sh`: (1) Bearer token เคยอยู่ใน argv ของ `curl` = โปรเซสอื่นเห็นผ่าน `ps` → ส่งผ่าน stdin
   (`printf … | curl -H @-`) (2) `umask 077` → cache/log/backoff สร้างเป็น 600
   ⚠️ ที่ยังเหลือ: ตอน refresh สำเร็จ `security add-generic-password -w "$NEWBLOB"` ยังส่ง blob ใน argv ชั่วขณะ

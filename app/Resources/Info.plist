@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>เปิด iTerm/Terminal แล้วรัน claude เพื่อล็อกอินหรือต่ออายุ token</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

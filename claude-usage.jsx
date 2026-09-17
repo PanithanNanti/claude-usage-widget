@@ -364,9 +364,29 @@ function refreshNow(e) {
 }
 function openLogin(e) {
   if (e) e.stopPropagation();
+  // iTerm2 ก่อน (ไม่มีค่อยใช้ Terminal) — สคริปต์เป็นข้อความคงที่ ไม่มีค่าจากภายนอกมาต่อ
+  const iterm =
+    "osascript" +
+    " -e 'tell application id \"com.googlecode.iterm2\"'" +
+    " -e 'if it is running then'" +
+    " -e 'activate'" +
+    " -e 'set w to (create window with default profile)'" +
+    " -e 'else'" +
+    " -e 'activate'" +
+    " -e 'delay 1'" +
+    " -e 'if (count of windows) is 0 then'" +
+    " -e 'set w to (create window with default profile)'" +
+    " -e 'else'" +
+    " -e 'set w to current window'" +
+    " -e 'end if'" +
+    " -e 'end if'" +
+    " -e 'tell current session of w to write text \"claude\"'" +
+    " -e 'end tell'";
+  const terminal =
+    "osascript -e 'tell application \"Terminal\" to activate'" +
+    " -e 'tell application \"Terminal\" to do script \"claude\"'";
   doRun(
-    'osascript -e \'tell application "Terminal" to activate\' ' +
-    '-e \'tell application "Terminal" to do script "claude"\''
+    "if open -Ra iTerm >/dev/null 2>&1; then " + iterm + "; else " + terminal + "; fi"
   ).catch(() => {});
 }
 function collapse(e) { if (e) { e.stopPropagation(); } lsSet(COLLAPSE_KEY, "1"); repaintCurrent(); }

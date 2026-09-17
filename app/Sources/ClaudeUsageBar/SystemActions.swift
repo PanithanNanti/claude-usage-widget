@@ -7,15 +7,45 @@ import ServiceManagement
 
 enum SystemActions {
 
-    /// เปิด Terminal แล้วรัน `claude` — วิธีเดียวกับ openLogin() ของ widget เดิม
-    /// (ให้ Claude Code เป็นคนล็อกอิน/หมุน token ให้ เราไม่ยุ่งกับ credential เอง)
+    static let iTermBundleID = "com.googlecode.iterm2"
+    static var hasITerm: Bool { NSWorkspace.shared.urlForApplication(withBundleIdentifier: iTermBundleID) != nil }
+    /// ชื่อที่โชว์ในเมนู/tooltip ("iTerm" หรือ "Terminal")
+    static var terminalName: String { hasITerm ? "iTerm" : "Terminal" }
+
+    /// เปิดหน้าต่าง terminal ใหม่แล้วรัน `claude` — ให้ Claude Code เป็นคนล็อกอิน/หมุน token ให้
+    /// (เราไม่ยุ่งกับ credential เอง) · iTerm2 ก่อน ไม่มีค่อยใช้ Terminal.app
+    /// สคริปต์เป็นข้อความคงที่ทั้งก้อน ไม่มีค่าจากภายนอกมาต่อ → ไม่มีช่อง injection
     static func openLoginTerminal() {
+        let script: [String]
+        if hasITerm {
+            // iTerm ยังไม่รัน → เปิดขึ้นมาจะสร้างหน้าต่างเองอยู่แล้ว ใช้หน้าต่างนั้น (ไม่งั้นได้ 2 หน้าต่าง)
+            // `write text` พิมพ์ลง shell ของผู้ใช้ → PATH ครบ (ต่างจาก `command` ที่ไม่ผ่าน login shell)
+            script = [
+                "tell application id \"\(iTermBundleID)\"",
+                "  if it is running then",
+                "    activate",
+                "    set w to (create window with default profile)",
+                "  else",
+                "    activate",
+                "    delay 1",
+                "    if (count of windows) is 0 then",
+                "      set w to (create window with default profile)",
+                "    else",
+                "      set w to current window",
+                "    end if",
+                "  end if",
+                "  tell current session of w to write text \"claude\"",
+                "end tell",
+            ]
+        } else {
+            script = [
+                "tell application \"Terminal\" to activate",
+                "tell application \"Terminal\" to do script \"claude\"",
+            ]
+        }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        task.arguments = [
-            "-e", "tell application \"Terminal\" to activate",
-            "-e", "tell application \"Terminal\" to do script \"claude\"",
-        ]
+        task.arguments = script.flatMap { ["-e", $0] }
         try? task.run()
     }
 
@@ -37,7 +67,7 @@ enum SystemActions {
     /// ไม่ประกอบคำสั่ง shell/AppleScript จาก path จึงไม่มีช่อง injection จากชื่อโฟลเดอร์แปลกๆ
     static func openTerminalAtFolder() {
         let folder = terminalFolder
-        let candidates = ["com.googlecode.iterm2", "com.apple.Terminal"]
+        let candidates = [iTermBundleID, "com.apple.Terminal"]
         guard let appURL = candidates.lazy
             .compactMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) })
             .first else { return }
